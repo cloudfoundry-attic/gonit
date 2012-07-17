@@ -15,7 +15,7 @@ import (
 // - Start using durations to calculate resource avg over the time duration.
 // - For right now we keep 5min of data for each resourceXpid.  Figure out what
 //       the right thing to do is, especially when we have different rules
-//       requesting the same resourceXpid at different intervals
+//       requesting the same resourceXpid at different intervals.
 // - Do we really need to allow for any other rule data than uint64?
 
 // This interface allows us to mock sigar in unit tests.
