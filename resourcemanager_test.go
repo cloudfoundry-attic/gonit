@@ -12,43 +12,46 @@ type FakeSigarGetter struct {
 	memResident uint64
 	procUsed    float64
 	timeNow     int64
+	sysMemUsed  uint64
 }
 
 // Gets the Resident memory of a process.
-func (s FakeSigarGetter) getMemResident(pid int) (uint64, error) {
+func (s FakeSigarGetter) getMem(pid int, kind string) (uint64, error) {
 	return (s.memResident), nil
 }
 
-// Gets the proc time and a timestamp and returns a ProcUsedTimestamp.
-func (s FakeSigarGetter) getProcUsedTimestamp(pid int) (ProcUsedTimestamp, error) {
-	return ProcUsedTimestamp{
-		procUsed:      float64(s.procUsed),
-		nanoTimestamp: float64(s.timeNow),
-	}, nil
+// Gets the proc time and a timestamp and returns a DataTimestamp.
+func (s FakeSigarGetter) getProcTime(pid int) (float64, error) {
+	return float64(s.procUsed), nil
+}
+
+func (s FakeSigarGetter) getSysMem(kind string) (uint64, error) {
+	return uint64(s.sysMemUsed), nil
 }
 
 var r ResourceManager
 
-func init() {
+func Setup() {
 	r = ResourceManager{}
 }
 
 func TestCalculateProcPercent(t *testing.T) {
-	first := ProcUsedTimestamp{
-		procUsed: 2886, nanoTimestamp: 1.342471447022575e+18}
-	second := ProcUsedTimestamp{
-		procUsed: 3849, nanoTimestamp: 1.342471449022077e+18}
-	var data []interface{}
+	Setup()
+	first := DataTimestamp{
+		data: float64(2886), nanoTimestamp: float64(1.342471447022575e+18)}
+	second := DataTimestamp{
+		data: float64(3849), nanoTimestamp: float64(1.342471449022077e+18)}
+	var data []DataTimestamp
 	data = append(data, first)
 	data = append(data, second)
 	assert.Equal(t, 0.48161999345784273, calculateProcPercent(data))
 }
 
 func TestGatherMem(t *testing.T) {
-	interval, _ := time.ParseDuration("1s")
+	Setup()
 	duration, _ := time.ParseDuration("0s")
 	r.SetSigarInterface(FakeSigarGetter{memResident: 1024})
-	resourceVal, err := r.GetResource(1234, MEM_USED_NAME, interval, duration)
+	resourceVal, err := r.GetResource(1234, MEM_USED_NAME, duration)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,11 +60,11 @@ func TestGatherMem(t *testing.T) {
 
 // Can't get proc percent with only one data point.
 func TestGatherFirstProcPercentZero(t *testing.T) {
-	interval, _ := time.ParseDuration("1s")
+	Setup()
 	duration, _ := time.ParseDuration("0s")
 	r.SetSigarInterface(FakeSigarGetter{procUsed: 2886,
 		timeNow: 1.342471447022575e+18})
-	resourceVal, err := r.GetResource(1234, "proc_percent", interval, duration)
+	resourceVal, err := r.GetResource(1234, "proc_percent", duration)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,25 +73,31 @@ func TestGatherFirstProcPercentZero(t *testing.T) {
 
 // When we have gotten proc percent twice, then we can get the proc time.
 func TestGatherProcPercent(t *testing.T) {
-	interval, _ := time.ParseDuration("1s")
+	Setup()
 	duration, _ := time.ParseDuration("0s")
-	fsg := FakeSigarGetter{procUsed: 2886, timeNow: 1.342471447022575e+18}
+	fsg := FakeSigarGetter{
+		procUsed: float64(2886),
+	}
 	r.SetSigarInterface(fsg)
-	resourceVal, err := r.GetResource(1234, "proc_percent", interval, duration)
+	resourceVal, err := r.GetResource(1234, "proc_percent", duration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fsg.procUsed = 3849
-	fsg.timeNow = 1.342471449022077e+18
+	assert.Equal(t, float64(0), resourceVal)
+	fsg = FakeSigarGetter{
+		procUsed: float64(3849),
+	}
 	r.SetSigarInterface(fsg)
-	resourceVal, err = r.GetResource(1234, "proc_percent", interval, duration)
+	resourceVal, err = r.GetResource(1234, "proc_percent", duration)
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, float64(0.48161999345784273), resourceVal)
+	assert.NotEqual(t, float64(0), resourceVal)
 }
 
 func TestParseAmountErrors(t *testing.T) {
+	Setup()
 	_, err := r.ParseAmount(MEM_USED_NAME, "2k")
 	assert.Equal(t, "mem_used '2k' is not the correct format.", err.Error())
 
@@ -105,6 +114,7 @@ func TestParseAmountErrors(t *testing.T) {
 }
 
 func TestIsValidResourceName(t *testing.T) {
+	Setup()
 	assert.Equal(t, true, r.IsValidResourceName(MEM_USED_NAME))
 	assert.Equal(t, true, r.IsValidResourceName(PROC_PERCENT_NAME))
 	assert.Equal(t, true, r.IsValidResourceName(PROC_PERCENT_NAME))
