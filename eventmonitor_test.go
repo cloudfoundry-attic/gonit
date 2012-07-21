@@ -8,6 +8,7 @@ import (
 )
 
 var eventMonitor EventMonitor
+
 const TWO_GB = uint64(2147483648)
 
 func init() {
@@ -67,8 +68,8 @@ func TestCompareUint64(t *testing.T) {
 
 func TestCheckRuleFloat(t *testing.T) {
 	parsedEvent := ParsedEvent{
-		operator: "==",
-		ruleAmount: 0.7,
+		operator:     "==",
+		ruleAmount:   0.7,
 		resourceName: "mem_used",
 	}
 	resourceVal := 0.7
@@ -81,8 +82,8 @@ func TestCheckRuleFloat(t *testing.T) {
 
 func TestCheckRuleUint(t *testing.T) {
 	parsedEvent := ParsedEvent{
-		operator: "==",
-		ruleAmount: uint64(7),
+		operator:     "==",
+		ruleAmount:   uint64(7),
 		resourceName: "mem_used",
 	}
 	resourceVal := uint64(7)
@@ -95,8 +96,8 @@ func TestCheckRuleUint(t *testing.T) {
 
 func TestCheckRuleFalseFloat(t *testing.T) {
 	parsedEvent := ParsedEvent{
-		operator: "==",
-		ruleAmount: 0.8,
+		operator:     "==",
+		ruleAmount:   0.8,
 		resourceName: "mem_used",
 	}
 	resourceVal := 0.7
@@ -109,8 +110,8 @@ func TestCheckRuleFalseFloat(t *testing.T) {
 
 func TestCheckRuleFalseUint(t *testing.T) {
 	parsedEvent := ParsedEvent{
-		operator: "==",
-		ruleAmount: uint64(8),
+		operator:     "==",
+		ruleAmount:   uint64(8),
 		resourceName: "mem_used",
 	}
 	resourceVal := uint64(7)
@@ -123,8 +124,8 @@ func TestCheckRuleFalseUint(t *testing.T) {
 
 func TestCheckRuleError(t *testing.T) {
 	parsedEvent := ParsedEvent{
-		operator: "==",
-		ruleAmount: true,
+		operator:     "==",
+		ruleAmount:   true,
 		resourceName: "mem_used",
 	}
 	resourceVal := true
@@ -197,9 +198,9 @@ func TestParseRuleInvalidResourceError(t *testing.T) {
 
 func TestParseEvent(t *testing.T) {
 	event := Event{
-		Rule: "mem_used>2gb",
-		Duration: "8s",
-		Interval: "10s",
+		Rule:        "mem_used>2gb",
+		Duration:    "8s",
+		Interval:    "10s",
 		Description: "The best rule ever!",
 	}
 	parsedEvent, err :=

@@ -121,7 +121,7 @@ type EventMonitor struct {
 func (e *EventMonitor) setup(configManager ConfigManager,
 	unixSocketFile string) error {
 	e.unixSocketFile = unixSocketFile
-	e.resourceManager = ResourceManager{}
+	e.resourceManager = resourceManager
 	e.configManager = configManager
 	e.alertEvents = []ParsedEvent{}
 	for _, group := range e.configManager.ProcessGroups {
@@ -189,7 +189,7 @@ func (e *EventMonitor) checkRules(pid int) {
 		interval := int64(alertEvent.interval.Seconds())
 		if alertEvent.pid == pid && (interval == 0 || diffTime%interval == 0) {
 			resourceVal, err := e.resourceManager.GetResource(
-				pid, alertEvent.resourceName, alertEvent.interval, alertEvent.duration)
+				pid, alertEvent.resourceName, alertEvent.duration)
 			if err != nil {
 				fmt.Println(err)
 				continue
