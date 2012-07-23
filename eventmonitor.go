@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -267,8 +268,9 @@ func (e EventMonitor) parseRule(
 		ruleAmount = firstPart
 		resourceName = lastPart
 	} else {
-		return 0, "", "", fmt.Errorf("Using invalid resource name in rule '%v'.",
-			rule)
+		return 0, "", "", fmt.Errorf("Invalid resource name in rule '%v'.  "+
+			"Valid resources are [%v].", rule,
+			strings.Join(e.resourceManager.ValidResourcesArray(), ", "))
 	}
 	parsedAmount, err := e.resourceManager.ParseAmount(resourceName, ruleAmount)
 	if err != nil {

@@ -4,6 +4,7 @@ package gonit
 
 import (
 	"github.com/bmizerany/assert"
+	"strings"
 	"testing"
 )
 
@@ -192,8 +193,9 @@ func TestParseRuleLt(t *testing.T) {
 func TestParseRuleInvalidResourceError(t *testing.T) {
 	_, _, _, err :=
 		eventMonitor.parseRule("2gb<invalid_resource")
-	assert.Equal(t, "Using invalid resource name in rule '2gb<invalid_resource'.",
-		err.Error())
+	assert.Equal(t, true, strings.HasPrefix(err.Error(),
+		"Invalid resource name in rule '2gb<invalid_resource'.  Valid resources "+
+			"are"))
 }
 
 func TestParseEvent(t *testing.T) {
