@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"strings"
 	"time"
 )
 
@@ -280,8 +281,9 @@ func (e *EventMonitor) parseRule(
 		ruleAmount = firstPart
 		resourceName = lastPart
 	} else {
-		return 0, 0, "", fmt.Errorf("Using invalid resource name in rule '%v'.",
-			rule)
+		return 0, "", "", fmt.Errorf("Invalid resource name in rule '%v'.  "+
+			"Valid resources are [%v].", rule,
+			strings.Join(e.resourceManager.ValidResourcesArray(), ", "))
 	}
 	var returnOperator int
 	switch operator {

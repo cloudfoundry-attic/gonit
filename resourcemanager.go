@@ -5,6 +5,7 @@ package gonit
 import (
 	"fmt"
 	"github.com/cloudfoundry/gosigar"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -111,14 +112,22 @@ const NANO_TO_MILLI = float64(time.Millisecond)
 const (
 	CPU_PERCENT_NAME = "cpu_percent"
 	MEMORY_PREFIX = "memory_"
-	MEMORY_USED_NAME = "memory_used"
 	SYS_MEMORY_PREFIX = "sys_memory_"
-	SYS_MEMORY_USED_NAME = "sys_memory_used"
 )
 
-var validResourceNames = map[string]bool{
-	MEMORY_USED_NAME: true,
-	CPU_PERCENT_NAME: true,
+var resourceDescriptions = map[string]string{
+	"memory_size":            "The virtual memory size for a running process.",
+	"memory_used":            "The real used memory for a running process.",
+	"memory_share":           "The shared memory size of a running process.",
+	"memory_minor_faults":    "The minor faults of a running process.",
+	"memory_major_faults":    "The major faults of a running process.",
+	"memory_page_faults":     "The page faults of a running process.",
+	"sys_memory_total":       "The total amount of memory on the system.",
+	"sys_memory_used":        "The amount of used memory on the system.",
+	"sys_memory_free":        "The amount of free memory on the system.",
+	"sys_memory_actual_free": "The amount of actual free memory on the system.",
+	"sys_memory_actual_used": "The amount of actual used memory on the system.",
+	CPU_PERCENT_NAME:     "The % time a process has used a CPU.",
 }
 
 // Given an array of data which is of type DataTimestamp, will return the
@@ -271,10 +280,24 @@ func (r *ResourceHolder) gather(pid int, sigarInterface *SigarInterface) error {
 
 // Checks to see if a resource is a valid resource.
 func (r *ResourceManager) IsValidResourceName(resourceName string) bool {
-	if _, hasKey := validResourceNames[resourceName]; hasKey {
+	if _, hasKey := resourceDescriptions[resourceName]; hasKey {
 		return true
 	}
 	return false
+}
+
+func (r ResourceManager) ValidResourcesArray() []string {
+	validResources := []string{}
+	for resourceName, _ := range resourceDescriptions {
+		validResources = append(validResources, resourceName)
+	}
+	return validResources
+}
+
+func (r ResourceManager) PrintResourceDescriptions(w io.Writer) {
+	for resourceName, resourceDescription := range resourceDescriptions {
+		w.Write([]byte(resourceName + ": " + resourceDescription + "\n"))
+	}
 }
 
 // Allows the sigar interface to be set so that tests can set it.
