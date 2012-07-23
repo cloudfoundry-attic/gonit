@@ -4,6 +4,7 @@ package gonit
 
 import (
 	"github.com/bmizerany/assert"
+	"strings"
 	"testing"
 )
 
@@ -126,65 +127,60 @@ func TestCheckRuleError(t *testing.T) {
 }
 
 func TestParseRuleForwards(t *testing.T) {
-	ruleAmount, operator, resourceName, err :=
-		eventMonitor.parseRule("memory_used==2gb")
+	parsedEvent, err := eventMonitor.parseRule("memory_used==2gb")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
-	assert.Equal(t, EQ_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	assert.Equal(t, TWO_GB, parsedEvent.ruleAmount.(uint64))
+	assert.Equal(t, EQ_OPERATOR, parsedEvent.operator)
+	assert.Equal(t, "memory_used", parsedEvent.resourceName)
 }
 
 func TestParseRuleBackwards(t *testing.T) {
-	ruleAmount, operator, resourceName, err :=
-		eventMonitor.parseRule("2gb==memory_used")
+	parsedEvent, err := eventMonitor.parseRule("2gb==memory_used")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
-	assert.Equal(t, EQ_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	assert.Equal(t, TWO_GB, parsedEvent.ruleAmount.(uint64))
+	assert.Equal(t, EQ_OPERATOR, parsedEvent.operator)
+	assert.Equal(t, "memory_used", parsedEvent.resourceName)
 }
 
 func TestParseRuleSpaces(t *testing.T) {
-	ruleAmount, operator, resourceName, err :=
-		eventMonitor.parseRule("  2gb   ==  memory_used   ")
+	parsedEvent, err := eventMonitor.parseRule("  2gb   ==  memory_used   ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
-	assert.Equal(t, EQ_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	assert.Equal(t, TWO_GB, parsedEvent.ruleAmount.(uint64))
+	assert.Equal(t, EQ_OPERATOR, parsedEvent.operator)
+	assert.Equal(t, "memory_used", parsedEvent.resourceName)
 }
 
 func TestParseRuleGt(t *testing.T) {
-	ruleAmount, operator, resourceName, err :=
-		eventMonitor.parseRule("2gb>memory_used")
+	parsedEvent, err := eventMonitor.parseRule("2gb>memory_used")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
-	assert.Equal(t, GT_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	assert.Equal(t, TWO_GB, parsedEvent.ruleAmount.(uint64))
+	assert.Equal(t, GT_OPERATOR, parsedEvent.operator)
+	assert.Equal(t, "memory_used", parsedEvent.resourceName)
 }
 
 func TestParseRuleLt(t *testing.T) {
-	ruleAmount, operator, resourceName, err :=
-		eventMonitor.parseRule("2gb<memory_used")
+	parsedEvent, err := eventMonitor.parseRule("2gb<memory_used")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
-	assert.Equal(t, LT_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	assert.Equal(t, TWO_GB, parsedEvent.ruleAmount.(uint64))
+	assert.Equal(t, LT_OPERATOR, parsedEvent.operator)
+	assert.Equal(t, "memory_used", parsedEvent.resourceName)
 }
 
 func TestParseRuleInvalidResourceError(t *testing.T) {
-	_, _, _, err :=
-		eventMonitor.parseRule("2gb<invalid_resource")
-	assert.Equal(t, "Using invalid resource name in rule '2gb<invalid_resource'.",
-		err.Error())
+	_, err := eventMonitor.parseRule("2gb<invalid_resource")
+	assert.Equal(t, true, strings.HasPrefix(err.Error(),
+		"Invalid resource name in rule '2gb<invalid_resource'.  Valid resources "+
+			"are"))
 }
 
 func TestParseEvent(t *testing.T) {

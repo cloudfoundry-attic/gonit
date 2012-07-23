@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"strings"
 	"time"
 )
 
@@ -240,8 +241,7 @@ func (e *EventMonitor) loadEvents(events []Event, groupName string,
 
 // Given a rule string such as 'memory_used >= 32mb', returns the ruleAmount
 // (32mb in b), operator (>=) and resourceName (memory_used).
-func (e *EventMonitor) parseRule(
-	rule string) (interface{}, int, string, error) {
+func (e *EventMonitor) parseRule(rule string) (*ParsedEvent, error) {
 	startFirstPart, startLastPart := -1, -1
 	var firstPart, operator, lastPart, ruleAmount, resourceName string
 	operatorFound := false
@@ -280,8 +280,9 @@ func (e *EventMonitor) parseRule(
 		ruleAmount = firstPart
 		resourceName = lastPart
 	} else {
-		return 0, 0, "", fmt.Errorf("Using invalid resource name in rule '%v'.",
-			rule)
+		return &ParsedEvent{}, fmt.Errorf("Invalid resource name in rule '%v'.  "+
+			"Valid resources are [%v].", rule,
+			strings.Join(e.resourceManager.ValidResourcesArray(), ", "))
 	}
 	var returnOperator int
 	switch operator {
@@ -294,14 +295,19 @@ func (e *EventMonitor) parseRule(
 	case "<":
 		returnOperator = LT_OPERATOR
 	default:
-		return 0, 0, "", fmt.Errorf("Invalid operator '%v' in rule '%v'.",
+		return &ParsedEvent{}, fmt.Errorf("Invalid operator '%v' in rule '%v'.",
 			operator, rule)
 	}
 	parsedAmount, err := e.resourceManager.ParseAmount(resourceName, ruleAmount)
 	if err != nil {
-		return 0, 0, "", err
+		return &ParsedEvent{}, err
 	}
-	return parsedAmount, returnOperator, resourceName, nil
+	parsedEvent := ParsedEvent{
+		ruleAmount: parsedAmount,
+		operator: returnOperator,
+		resourceName: resourceName,
+	}
+	return &parsedEvent, nil
 }
 
 // Given an Event, parses the rule into amount, operator and resourceName, does
@@ -309,7 +315,7 @@ func (e *EventMonitor) parseRule(
 func (e *EventMonitor) parseEvent(event Event, groupName string,
 	processName string) (*ParsedEvent, error) {
 	rule := event.Rule
-	ruleAmount, operator, resourceName, err := e.parseRule(rule)
+	parsedEvent, err := e.parseRule(rule)
 	if err != nil {
 		return &ParsedEvent{}, err
 	}
@@ -332,18 +338,13 @@ func (e *EventMonitor) parseEvent(event Event, groupName string,
 		return &ParsedEvent{}, err
 	}
 
-	parsedEvent := ParsedEvent{
-		operator:     operator,
-		ruleAmount:   ruleAmount,
-		resourceName: resourceName,
-		ruleString:   rule,
-		duration:     parsedDuration,
-		groupName:    groupName,
-		processName:  processName,
-		description:  event.Description,
-		interval:     parsedInterval,
-	}
-	return &parsedEvent, nil
+	parsedEvent.ruleString = rule
+	parsedEvent.duration = parsedDuration
+	parsedEvent.groupName = groupName
+	parsedEvent.processName = processName
+	parsedEvent.description = event.Description
+	parsedEvent.interval = parsedInterval
+	return parsedEvent, nil
 }
 
 // Sends an alert over the unix socket.
