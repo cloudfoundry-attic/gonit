@@ -5,6 +5,7 @@ package gonit
 import (
 	"fmt"
 	"github.com/cloudfoundry/gosigar"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -107,12 +108,21 @@ const NANO_TO_MILLI = 1000000.0
 const MEM_PREFIX = "mem_"
 const PROC_PERCENT_NAME = "proc_percent"
 const SYS_MEM_PREFIX = "sys_mem_"
-const MEM_USED_NAME = "mem_used"
 const SYS_MEM_USED_NAME = "sys_mem_used"
 
-var validResourceNames = map[string]bool{
-	MEM_USED_NAME:     true,
-	PROC_PERCENT_NAME: true,
+var resourceDescriptions = map[string]string{
+	"mem_size":            "The virtual memory size for a running process.",
+	"mem_used":            "The real used memory for a running process.",
+	"mem_share":           "The shared memory size of a running process.",
+	"mem_minor_faults":    "The minor faults of a running process.",
+	"mem_major_faults":    "The major faults of a running process.",
+	"mem_page_faults":     "The page faults of a running process.",
+	"sys_mem_total":       "The total amount of memory on the system.",
+	"sys_mem_used":        "The amount of used memory on the system.",
+	"sys_mem_free":        "The amount of free memory on the system.",
+	"sys_mem_actual_free": "The amount of actual free memory on the system.",
+	"sys_mem_actual_used": "The amount of actual used memory on the system.",
+	PROC_PERCENT_NAME:     "The % time a process has used a CPU.",
 }
 
 // Given an array of data which is of type DataTimestamp, will return the
@@ -184,10 +194,11 @@ func (r *ResourceManager) GetResource(pid int, resourceName string,
 // 14*1024*1024.
 func (r ResourceManager) ParseAmount(resourceName string,
 	amount string) (interface{}, error) {
-	if resourceName == MEM_USED_NAME {
+	if strings.HasPrefix(resourceName, MEM_PREFIX) ||
+		strings.HasPrefix(resourceName, SYS_MEM_PREFIX) {
 		if len(amount) < 3 {
 			return nil, fmt.Errorf("%v '%v' is not the correct format.",
-				MEM_USED_NAME, amount)
+				resourceName, amount)
 		}
 		units := amount[len(amount)-2:]
 		amount = amount[0 : len(amount)-2]
@@ -204,7 +215,7 @@ func (r ResourceManager) ParseAmount(resourceName string,
 			amountUi *= 1024 * 1024 * 1024
 		default:
 			return nil, fmt.Errorf("Invalid units '%v' on '%v'.",
-				units, MEM_USED_NAME)
+				units, resourceName)
 		}
 		return amountUi, nil
 	}
@@ -260,10 +271,24 @@ func (r *ResourceHolder) gather(sigarInterface SigarInterface) error {
 
 // Checks to see if a resource is a valid resource.
 func (r ResourceManager) IsValidResourceName(resourceName string) bool {
-	if _, hasKey := validResourceNames[resourceName]; hasKey {
+	if _, hasKey := resourceDescriptions[resourceName]; hasKey {
 		return true
 	}
 	return false
+}
+
+func (r ResourceManager) ValidResourcesArray() []string {
+	validResources := []string{}
+	for resourceName, _ := range resourceDescriptions {
+		validResources = append(validResources, resourceName)
+	}
+	return validResources
+}
+
+func (r ResourceManager) PrintResourceDescriptions(w io.Writer) {
+	for resourceName, resourceDescription := range resourceDescriptions {
+		w.Write([]byte(resourceName + ": " + resourceDescription + "\n"))
+	}
 }
 
 // Allows the sigar interface to be set so that tests can set it.

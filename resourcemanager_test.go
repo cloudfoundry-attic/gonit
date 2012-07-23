@@ -52,7 +52,7 @@ func TestGatherMem(t *testing.T) {
 	Setup()
 	duration, _ := time.ParseDuration("0s")
 	r.SetSigarInterface(FakeSigarGetter{memResident: 1024})
-	resourceVal, err := r.GetResource(1234, MEM_USED_NAME, duration)
+	resourceVal, err := r.GetResource(1234, "mem_used", duration)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,14 +127,14 @@ func TestGatherProcPercent(t *testing.T) {
 
 func TestParseAmountErrors(t *testing.T) {
 	Setup()
-	_, err := r.ParseAmount(MEM_USED_NAME, "2k")
+	_, err := r.ParseAmount("mem_used", "2k")
 	assert.Equal(t, "mem_used '2k' is not the correct format.", err.Error())
 
-	_, err = r.ParseAmount(MEM_USED_NAME, "$kb")
+	_, err = r.ParseAmount("mem_used", "$kb")
 	assert.Equal(t, "strconv.ParseUint: parsing \"$\": invalid syntax",
 		err.Error())
 
-	_, err = r.ParseAmount(MEM_USED_NAME, "5zb")
+	_, err = r.ParseAmount("mem_used", "5zb")
 	assert.Equal(t, "Invalid units 'zb' on 'mem_used'.", err.Error())
 
 	_, err = r.ParseAmount(PROC_PERCENT_NAME, "5zb")
@@ -144,7 +144,7 @@ func TestParseAmountErrors(t *testing.T) {
 
 func TestIsValidResourceName(t *testing.T) {
 	Setup()
-	assert.Equal(t, true, r.IsValidResourceName(MEM_USED_NAME))
+	assert.Equal(t, true, r.IsValidResourceName("mem_used"))
 	assert.Equal(t, true, r.IsValidResourceName(PROC_PERCENT_NAME))
 	assert.Equal(t, true, r.IsValidResourceName(PROC_PERCENT_NAME))
 }
