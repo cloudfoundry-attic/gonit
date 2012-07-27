@@ -129,7 +129,7 @@ type EventMonitor struct {
 func (e *EventMonitor) setup(configManager *ConfigManager,
 	unixSocketFile string) error {
 	e.unixSocketFile = unixSocketFile
-	e.resourceManager = ResourceManager{}
+	e.resourceManager = resourceManager
 	e.configManager = configManager
 	e.alertEvents = []*ParsedEvent{}
 	for _, group := range e.configManager.ProcessGroups {
