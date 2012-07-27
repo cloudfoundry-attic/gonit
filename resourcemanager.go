@@ -20,11 +20,9 @@ import (
 
 // This interface allows us to mock sigar in unit tests.
 type SigarInterface interface {
-	getMemResident(int) (uint64, error)
-	getProcUsedTimestamp(int) (*ProcUsedTimestamp, error)
+	getMemResident(pid int) (uint64, error)
+	getProcTime(pid int) (float64, error)
 }
-
-var sigarInterface SigarInterface = &SigarGetter{}
 
 type SigarGetter struct{}
 
@@ -37,19 +35,16 @@ func (s *SigarGetter) getMemResident(pid int) (uint64, error) {
 	return mem.Resident, nil
 }
 
-// Gets the proc time and a timestamp and returns a ProcUsedTimestamp.
-func (s *SigarGetter) getProcUsedTimestamp(pid int) (*ProcUsedTimestamp,
-	error) {
+// Gets the proc time and a timestamp and returns a DataTimestamp.
+func (s *SigarGetter) getProcTime(pid int) (float64, error) {
 	procTime := sigar.ProcTime{}
 	if err := procTime.Get(pid); err != nil {
-		return nil, fmt.Errorf("Couldnt get proctime for pid '%v'.", pid)
+		return 0, fmt.Errorf("Couldnt get proctime for pid '%v'.", pid)
 	}
-	return &ProcUsedTimestamp{
-		procUsed:      float64(procTime.Total),
-		nanoTimestamp: float64(time.Now().UnixNano()),
-	}, nil
+	return float64(procTime.Total), nil
 }
 
+// Don't create more.
 type ResourceManager struct {
 	resourceHolders []*ResourceHolder
 	sigarInterface  SigarInterface
@@ -58,12 +53,16 @@ type ResourceManager struct {
 type ResourceHolder struct {
 	processName     string
 	resourceName    string
-	data            []interface{}
+	dataTimestamps  []DataTimestamp
 	firstEntryIndex int
 }
 
-type ProcUsedTimestamp struct {
-	procUsed      float64
+var resourceManager ResourceManager = ResourceManager{
+	sigarInterface: &SigarGetter{},
+}
+
+type DataTimestamp struct {
+	data          interface{}
 	nanoTimestamp float64
 }
 
@@ -72,19 +71,26 @@ var MAX_DATA_TO_STORE = 120
 
 const NANO_TO_MILLI = float64(time.Millisecond)
 
-const MEMORY_USED_NAME = "memory_used"
-const CPU_PERCENT_NAME = "cpu_percent"
+const (
+	CPU_PERCENT_NAME = "cpu_percent"
+	MEMORY_USED_NAME = "memory_used"
+)
 
 var validResourceNames = map[string]bool{
 	MEMORY_USED_NAME: true,
 	CPU_PERCENT_NAME: true,
 }
 
+// Cleans data from ResourceManager.
+func (r *ResourceManager) CleanData() {
+	resourceManager.resourceHolders = []*ResourceHolder{}
+}
+
 // Get the nth entry in the data.  Accepts a negaitve number, as well, so that
 // the last etc. can be referenced.
-func (r *ResourceHolder) getNthData(index int) (interface{}, error) {
-	data := r.data
-	dataLen := len(r.data)
+func (r *ResourceHolder) getNthData(index int) (*DataTimestamp, error) {
+	data := r.dataTimestamps
+	dataLen := len(data)
 	if index < 0 {
 		if index+dataLen < 0 {
 			return nil, fmt.Errorf("Cannot have a negative index '%v' larger than "+
@@ -95,12 +101,12 @@ func (r *ResourceHolder) getNthData(index int) (interface{}, error) {
 			if lastIndex < 0 {
 				lastIndex = dataLen + lastIndex
 			}
-			return data[lastIndex], nil
+			return &data[lastIndex], nil
 		} else {
-			return data[dataLen+index], nil
+			return &data[dataLen+index], nil
 		}
 	} else {
-		return data[index], nil
+		return &data[index], nil
 	}
 	panic("Can't get here.")
 }
@@ -108,7 +114,7 @@ func (r *ResourceHolder) getNthData(index int) (interface{}, error) {
 // Given an array of data which is of type ProcUsedTimestamp, will return the
 // percent of proc time that was used.
 func (r *ResourceHolder) calculateProcPercent() (float64, error) {
-	data := r.data
+	data := r.dataTimestamps
 	dataLen := len(data)
 	if dataLen <= 1 {
 		return 0, nil
@@ -121,12 +127,11 @@ func (r *ResourceHolder) calculateProcPercent() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	lastProc := last.(ProcUsedTimestamp)
-	secondLastProc := secondLast.(ProcUsedTimestamp)
-	lastMilli := lastProc.nanoTimestamp / NANO_TO_MILLI
-	secondLastMilli := secondLastProc.nanoTimestamp / NANO_TO_MILLI
-	return (lastProc.procUsed - secondLastProc.procUsed) /
-		(lastMilli - secondLastMilli), nil
+	lastProc := last.data.(float64)
+	secondLastProc := secondLast.data.(float64)
+	lastMilli := last.nanoTimestamp / NANO_TO_MILLI
+	secondLastMilli := secondLast.nanoTimestamp / NANO_TO_MILLI
+	return (lastProc - secondLastProc) / (lastMilli - secondLastMilli), nil
 }
 
 // Given a ParsedEvent, will populate the correct resourceHolder with the
@@ -138,7 +143,7 @@ func (r *ResourceManager) gatherResource(parsedEvent *ParsedEvent,
 	for _, resourceHolder := range r.resourceHolders {
 		if resourceHolder.processName == processName &&
 			resourceHolder.resourceName == resourceName {
-			if err := resourceHolder.gather(pid); err != nil {
+			if err := r.gather(pid, resourceHolder); err != nil {
 				return err
 			}
 			return nil
@@ -148,7 +153,7 @@ func (r *ResourceManager) gatherResource(parsedEvent *ParsedEvent,
 		processName:  processName,
 		resourceName: resourceName,
 	}
-	if err := resourceHolder.gather(pid); err != nil {
+	if err := r.gather(pid, resourceHolder); err != nil {
 		return err
 	}
 	r.resourceHolders = append(r.resourceHolders, resourceHolder)
@@ -165,7 +170,7 @@ func (r *ResourceManager) GetResource(parsedEvent *ParsedEvent,
 		return nil, err
 	}
 	for _, resourceHolder := range r.resourceHolders {
-		lenResourceData := len(resourceHolder.data)
+		lenResourceData := len(resourceHolder.dataTimestamps)
 		if resourceHolder.processName == processName &&
 			resourceHolder.resourceName == resourceName && lenResourceData > 0 {
 			if resourceName == CPU_PERCENT_NAME {
@@ -179,7 +184,7 @@ func (r *ResourceManager) GetResource(parsedEvent *ParsedEvent,
 				if err != nil {
 					return nil, err
 				}
-				return last, nil
+				return last.data, nil
 			}
 		}
 	}
@@ -198,7 +203,7 @@ func (r *ResourceManager) ParseAmount(resourceName string,
 		lenAmount := len(amount)
 		if lenAmount < 3 {
 			return nil, fmt.Errorf("%v '%v' is not the correct format.",
-				MEMORY_USED_NAME, amount)
+				resourceName, amount)
 		}
 		units := amount[lenAmount-2:]
 		amount = amount[0 : lenAmount-2]
@@ -215,7 +220,7 @@ func (r *ResourceManager) ParseAmount(resourceName string,
 			amountUi *= 1024 * 1024 * 1024
 		default:
 			return nil, fmt.Errorf("Invalid units '%v' on '%v'.",
-				units, MEMORY_USED_NAME)
+				units, resourceName)
 		}
 		return amountUi, nil
 	} else if resourceName == CPU_PERCENT_NAME {
@@ -227,36 +232,40 @@ func (r *ResourceManager) ParseAmount(resourceName string,
 
 // Saves a data point into the data array of the ResourceHolder.
 func (r *ResourceHolder) saveData(dataToSave interface{}) {
-	if len(r.data) > MAX_DATA_TO_STORE {
+	dataTimestamp := DataTimestamp{
+		data:          dataToSave,
+		nanoTimestamp: float64(time.Now().UnixNano()),
+	}
+
+	if len(r.dataTimestamps) > MAX_DATA_TO_STORE {
 		panic("This shouldn't happen.")
-	} else if len(r.data) == MAX_DATA_TO_STORE {
+	} else if len(r.dataTimestamps) == MAX_DATA_TO_STORE {
 		// Clear out old data.
-		r.data[r.firstEntryIndex] = dataToSave
+		r.dataTimestamps[r.firstEntryIndex] = dataTimestamp
 		r.firstEntryIndex++
 		if r.firstEntryIndex == MAX_DATA_TO_STORE {
 			r.firstEntryIndex = 0
 		}
 	} else {
-		r.data = append(r.data, dataToSave)
+		r.dataTimestamps = append(r.dataTimestamps, dataTimestamp)
 	}
 }
 
-// Gets the data for a resource and saves it to the ResourceHolder.  The
-// intervalAmount is used to know how much data to store and how much to kick
-// out.
-func (r *ResourceHolder) gather(pid int) error {
-	if r.resourceName == MEMORY_USED_NAME {
-		memResident, err := sigarInterface.getMemResident(pid)
+// Gets the data for a resource and saves it to the ResourceHolder.
+func (r *ResourceManager) gather(pid int,
+	resourceHolder *ResourceHolder) error {
+	if resourceHolder.resourceName == MEMORY_USED_NAME {
+		mem, err := r.sigarInterface.getMemResident(pid)
 		if err != nil {
 			return err
 		}
-		r.saveData(memResident)
-	} else if r.resourceName == CPU_PERCENT_NAME {
-		procUsedTimestamp, err := sigarInterface.getProcUsedTimestamp(pid)
+		resourceHolder.saveData(mem)
+	} else if resourceHolder.resourceName == CPU_PERCENT_NAME {
+		procTime, err := r.sigarInterface.getProcTime(pid)
 		if err != nil {
 			return err
 		}
-		r.saveData(*procUsedTimestamp)
+		resourceHolder.saveData(procTime)
 	}
 	return nil
 }
@@ -271,5 +280,5 @@ func (r *ResourceManager) IsValidResourceName(resourceName string) bool {
 
 // Allows the sigar interface to be set so that tests can set it.
 func (r *ResourceManager) SetSigarInterface(sigar SigarInterface) {
-	sigarInterface = sigar
+	r.sigarInterface = sigar
 }
