@@ -129,7 +129,7 @@ type EventMonitor struct {
 func (e *EventMonitor) setup(configManager *ConfigManager,
 	unixSocketFile string) error {
 	e.unixSocketFile = unixSocketFile
-	e.resourceManager = ResourceManager{}
+	e.resourceManager = resourceManager
 	e.configManager = configManager
 	e.alertEvents = []*ParsedEvent{}
 	for _, group := range e.configManager.ProcessGroups {
@@ -195,6 +195,7 @@ func (e *EventMonitor) Stop() {
 	// TODO: Clean up data structures.
 	e.quitChan <- true
 	close(e.quitChan)
+	e.resourceManager.CleanData()
 }
 
 // Given a process name and a pid, this will check all the rules associated with
