@@ -30,7 +30,7 @@ type Daemon struct {
 	Stderr     string
 	Env        []string
 	Dir        string
-	Credential *syscall.Credential
+	credential *syscall.Credential
 	Pidfile    string
 	Start      string
 	Stop       string
@@ -84,7 +84,7 @@ func (d *Daemon) Command(program string) (*exec.Cmd, error) {
 		Dir:  d.Dir,
 		SysProcAttr: &syscall.SysProcAttr{
 			Setsid:     true,
-			Credential: d.Credential,
+			Credential: d.credential,
 		},
 	}
 
@@ -292,13 +292,13 @@ func (d *Daemon) lookupUid() error {
 	uid, _ := strconv.Atoi(id.Uid)
 	gid, _ := strconv.Atoi(id.Gid)
 
-	if d.Credential == nil {
-		d.Credential = &syscall.Credential{
+	if d.credential == nil {
+		d.credential = &syscall.Credential{
 			Uid: uint32(uid),
 			Gid: uint32(gid),
 		}
 	} else {
-		d.Credential.Uid = uint32(uid)
+		d.credential.Uid = uint32(uid)
 	}
 
 	return nil
@@ -315,13 +315,13 @@ func (d *Daemon) lookupGid() error {
 		return err
 	}
 
-	if d.Credential == nil {
-		d.Credential = &syscall.Credential{
+	if d.credential == nil {
+		d.credential = &syscall.Credential{
 			Uid: uint32(os.Getuid()),
 			Gid: uint32(gid),
 		}
 	} else {
-		d.Credential.Uid = uint32(gid)
+		d.credential.Uid = uint32(gid)
 	}
 
 	return nil

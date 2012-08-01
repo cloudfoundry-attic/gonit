@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -45,31 +44,13 @@ type Action struct {
 }
 
 type Process struct {
-	Name        string
+	Daemon
 	Description string
-	Pidfile     string
-	Start       string
-	Stop        string
 	DependsOn   []string
 	Actions     map[string][]string
-	Gid         string
-	Uid         string
 	// TODO How do we make it so Monitor is true by default and only false when
 	// explicitly set in yaml?
 	Monitor bool
-}
-
-// Gets the PID file for a process and returns the PID for it.
-func (p Process) GetPid() (int, error) {
-	pidfile, err := ioutil.ReadFile(p.Pidfile)
-	if err != nil {
-		return -1, err
-	}
-	pidfileInt, err := strconv.Atoi(string(pidfile))
-	if err != nil {
-		return -1, err
-	}
-	return pidfileInt, nil
 }
 
 // Given an action string name, returns the events associated with it.
@@ -178,10 +159,8 @@ func (c *ConfigManager) Parse(path string) error {
 func (pg ProcessGroup) validateRequiredFieldsExist() error {
 	for name, process := range pg.Processes {
 		if process.Name == "" || process.Description == "" ||
-			process.Pidfile == "" || process.Start == "" || process.Stop == "" ||
-			process.Gid == "" || process.Uid == "" {
-			return fmt.Errorf("%v must have name, description, pidfile, start, "+
-				"stop, gid, and uid.", name)
+			process.Pidfile == "" || process.Start == "" {
+			return fmt.Errorf("%v must have name, description, pidfile and start.", name)
 		}
 	}
 	for name, event := range pg.Events {
