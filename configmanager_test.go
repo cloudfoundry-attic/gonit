@@ -21,8 +21,9 @@ func TestGetPid(t *testing.T) {
 	if _, err := file.Write([]byte("1234")); err != nil {
 		t.Fatal(err)
 	}
-	process := Process{Pidfile: file.Name()}
-	pid, err := process.GetPid()
+	process := Process{}
+	process.Pidfile = file.Name()
+	pid, err := process.Pid()
 	if err != nil {
 		t.Fatal(err)
 	}
