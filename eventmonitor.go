@@ -175,7 +175,7 @@ func (e *EventMonitor) Start(configManager *ConfigManager,
 						// TODO change the GetPid to be a go routine that happens every X
 						// seconds with a lock on it so we don't have to keep opening the
 						// file.
-						pid, err := process.GetPid()
+						pid, err := process.Pid()
 						if err != nil {
 							log.Println("Could not get pid file for process '%v'. Error: %+v",
 								process.Name, err)
