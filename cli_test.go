@@ -1,10 +1,12 @@
 // Copyright (c) 2012 VMware, Inc.
 
-package gonit
+package gonit_test
 
 import (
 	"fmt"
 	"github.com/bmizerany/assert"
+	. "github.com/cloudfoundry/gonit"
+	"github.com/cloudfoundry/gonit/test/helper"
 	"net/rpc"
 	"testing"
 )
@@ -43,27 +45,27 @@ func (m *MockAPI) About(args interface{}, about *About) error {
 
 // run tests via RPC or local reflection
 func runTests(t *testing.T, client CliClient) {
-	method, name := rpcArgs("stop", "foo", false)
+	method, name := RpcArgs("stop", "foo", false)
 	reply, err := client.Call(method, name)
 	assert.Equal(t, nil, err)
 
-	method, name = rpcArgs("stop", "bar", false)
+	method, name = RpcArgs("stop", "bar", false)
 	reply, err = client.Call(method, name)
 	assert.NotEqual(t, nil, err)
 
-	method, name = rpcArgs("unmonitor", "all", false)
+	method, name = RpcArgs("unmonitor", "all", false)
 	reply, err = client.Call(method, name)
 	assert.Equal(t, nil, err)
 
-	method, name = rpcArgs("start", "vcap", true)
+	method, name = RpcArgs("start", "vcap", true)
 	reply, err = client.Call(method, name)
 	assert.Equal(t, nil, err)
 
-	method, name = rpcArgs("start", "bar", true)
+	method, name = RpcArgs("start", "bar", true)
 	reply, err = client.Call(method, name)
 	assert.NotEqual(t, nil, err)
 
-	method, name = rpcArgs("about", "", false)
+	method, name = RpcArgs("about", "", false)
 	reply, err = client.Call(method, name)
 	assert.Equal(t, nil, err)
 
@@ -76,8 +78,8 @@ func runTests(t *testing.T, client CliClient) {
 }
 
 func TestRemote(t *testing.T) {
-	err := withRpcServer(func(c *rpc.Client) {
-		client := &remoteClient{client: c, rcvr: mockAPI}
+	err := helper.WithRpcServer(func(c *rpc.Client) {
+		client := NewRemoteClient(c, mockAPI)
 		runTests(t, client)
 	})
 
@@ -85,6 +87,6 @@ func TestRemote(t *testing.T) {
 }
 
 func TestLocal(t *testing.T) {
-	client := &localClient{rcvr: mockAPI}
+	client := NewLocalClient(mockAPI)
 	runTests(t, client)
 }

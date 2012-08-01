@@ -76,6 +76,14 @@ func (c *localClient) Close() error {
 	return nil
 }
 
+func NewRemoteClient(client *rpc.Client, rcvr interface{}) CliClient {
+	return &remoteClient{client: client, rcvr: rcvr}
+}
+
+func NewLocalClient(rcvr interface{}) CliClient {
+	return &localClient{rcvr: rcvr}
+}
+
 // helper to lookup api method via name string
 func lookupRpcMethod(rcvr interface{}, name string) (reflect.Method, error) {
 	typ := reflect.TypeOf(rcvr)
@@ -94,7 +102,7 @@ func newRpcReply(method reflect.Method) reflect.Value {
 }
 
 // helper to convert command-line arguments to api method call
-func rpcArgs(method string, name string, isGroup bool) (string, string) {
+func RpcArgs(method string, name string, isGroup bool) (string, string) {
 	if name != "" {
 		var kind string
 

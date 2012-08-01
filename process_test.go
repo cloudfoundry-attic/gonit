@@ -1,14 +1,13 @@
 // Copyright (c) 2012 VMware, Inc.
 
-package gonit
+package gonit_test
 
 import (
 	"github.com/bmizerany/assert"
+	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
-	"io/ioutil"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,13 +15,6 @@ import (
 	"testing"
 	"time"
 )
-
-var dprocess, goprocess string
-
-func init() {
-	// binary used for the majority of tests
-	goprocess = helper.BuildTestProgram("process")
-}
 
 // absolute path to the json encoded helper.ProcessInfo
 // written by goprocess, read by the following Tests.
@@ -89,74 +81,10 @@ func pause() {
 	time.Sleep(100 * time.Millisecond)
 }
 
-func cleanup(daemon *Daemon) {
-	os.RemoveAll(daemon.Dir)
-}
-
-func mkcmd(args []string, action string) []string {
-	cmd := make([]string, len(args))
-	copy(cmd, args)
-	return append(cmd, action)
-}
-
-func NewTestDaemon(name string, flags []string, detached bool) *Daemon {
-	// using '/tmp' rather than os.TempDir, otherwise 'sudo -E go test'
-	// will fail on darwin, since only the user that started the process
-	// has rx perms
-	dir, err := ioutil.TempDir("/tmp", "gonit-pt-"+name)
-	if err != nil {
-		log.Fatal(err)
-	}
-	os.Chmod(dir, 0755) // rx perms for all
-
-	// see TempDir comment; copy goprocess where any user can execute
-	dprocess = filepath.Join(dir, path.Base(goprocess))
-	helper.CopyFile(goprocess, dprocess, 0555)
-
-	logfile := filepath.Join(dir, name+".log")
-	pidfile := filepath.Join(dir, name+".pid")
-
-	var start, stop, restart []string
-
-	args := []string{
-		dprocess,
-		"-d", dir,
-		"-n", name,
-	}
-
-	for _, arg := range flags {
-		args = append(args, arg)
-	}
-
-	if detached {
-		// process will detach itself
-		args = append(args, "-F", "-p", pidfile)
-
-		// configure stop + restart commands with
-		// the same flags as the start command
-		stop = mkcmd(args, "stop")
-		restart = mkcmd(args, "restart")
-	}
-
-	start = mkcmd(args, "start")
-
-	return &Daemon{
-		Name:     name,
-		Start:    strings.Join(start, " "),
-		Stop:     strings.Join(stop, " "),
-		Restart:  strings.Join(restart, " "),
-		Dir:      dir,
-		Stderr:   logfile,
-		Stdout:   logfile,
-		Pidfile:  pidfile,
-		Detached: detached,
-	}
-}
-
 // start + stop of gonit daemonized process
 func TestSimple(t *testing.T) {
-	daemon := NewTestDaemon("simple", nil, false)
-	defer cleanup(daemon)
+	daemon := helper.NewTestDaemon("simple", nil, false)
+	defer helper.Cleanup(daemon)
 
 	pid, err := daemon.StartProcess()
 	if err != nil {
@@ -185,8 +113,8 @@ func TestSimpleSetuid(t *testing.T) {
 		return
 	}
 
-	daemon := NewTestDaemon("simple_setuid", nil, false)
-	defer cleanup(daemon)
+	daemon := helper.NewTestDaemon("simple_setuid", nil, false)
+	defer helper.Cleanup(daemon)
 
 	helper.TouchFile(processJsonFile(daemon), 0666)
 
@@ -230,8 +158,8 @@ func grandArgs(args []string) bool {
 // start / restart / stop self-daemonized process
 func TestDetached(t *testing.T) {
 	// start process
-	daemon := NewTestDaemon("detached", nil, true)
-	defer cleanup(daemon)
+	daemon := helper.NewTestDaemon("detached", nil, true)
+	defer helper.Cleanup(daemon)
 
 	pid, err := daemon.StartProcess()
 	if err != nil {
@@ -312,8 +240,8 @@ func TestFailSetuid(t *testing.T) {
 		return
 	}
 
-	daemon := NewTestDaemon("fail_setuid", nil, false)
-	defer cleanup(daemon)
+	daemon := helper.NewTestDaemon("fail_setuid", nil, false)
+	defer helper.Cleanup(daemon)
 
 	daemon.User = "aint_nobody"
 
@@ -329,10 +257,10 @@ func TestFailSetuid(t *testing.T) {
 
 // test invalid executable
 func TestFailExe(t *testing.T) {
-	daemon := NewTestDaemon("fail_exe", nil, false)
-	defer cleanup(daemon)
+	daemon := helper.NewTestDaemon("fail_exe", nil, false)
+	defer helper.Cleanup(daemon)
 
-	err := os.Chmod(dprocess, 0444)
+	err := os.Chmod(helper.TestProcess, 0444)
 	if err != nil {
 		log.Fatal(err)
 	}

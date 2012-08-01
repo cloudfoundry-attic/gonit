@@ -4,13 +4,17 @@ package helper
 
 import (
 	"encoding/json"
+	. "github.com/cloudfoundry/gonit"
 	"io"
 	"io/ioutil"
 	"log"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -29,6 +33,8 @@ type ProcessInfo struct {
 	Env      []string
 	Restarts int
 }
+
+var TestProcess, goprocess string
 
 func CurrentProcessInfo() *ProcessInfo {
 	cwd, _ := os.Getwd()
@@ -140,4 +146,107 @@ func NotRoot() bool {
 	}
 	log.Println("SKIP: test must be run as root")
 	return true
+}
+
+func WithRpcServer(f func(c *rpc.Client)) error {
+	file, err := ioutil.TempFile("", "gonit-rpc")
+	if err != nil {
+		return err
+	}
+	path := file.Name()
+	defer os.Remove(path)
+	os.Remove(path)
+
+	url := "unix://" + path
+
+	server, err := NewRpcServer(url)
+
+	if err != nil {
+		return err
+	}
+
+	go server.Serve()
+
+	client, err := jsonrpc.Dial("unix", path)
+
+	if err != nil {
+		return err
+	}
+
+	defer client.Close()
+
+	f(client)
+
+	server.Shutdown()
+
+	return nil
+}
+
+func Cleanup(daemon *Daemon) {
+	os.RemoveAll(daemon.Dir)
+}
+
+func mkcmd(args []string, action string) []string {
+	cmd := make([]string, len(args))
+	copy(cmd, args)
+	return append(cmd, action)
+}
+
+func NewTestDaemon(name string, flags []string, detached bool) *Daemon {
+	// using '/tmp' rather than os.TempDir, otherwise 'sudo -E go test'
+	// will fail on darwin, since only the user that started the process
+	// has rx perms
+	dir, err := ioutil.TempDir("/tmp", "gonit-pt-"+name)
+	if err != nil {
+		log.Fatal(err)
+	}
+	os.Chmod(dir, 0755) // rx perms for all
+
+	if goprocess == "" {
+		// binary used for the majority of tests
+		goprocess = BuildTestProgram("process")
+	}
+
+	// see TempDir comment; copy goprocess where any user can execute
+	TestProcess = filepath.Join(dir, path.Base(goprocess))
+	CopyFile(goprocess, TestProcess, 0555)
+
+	logfile := filepath.Join(dir, name+".log")
+	pidfile := filepath.Join(dir, name+".pid")
+
+	var start, stop, restart []string
+
+	args := []string{
+		TestProcess,
+		"-d", dir,
+		"-n", name,
+	}
+
+	for _, arg := range flags {
+		args = append(args, arg)
+	}
+
+	if detached {
+		// process will detach itself
+		args = append(args, "-F", "-p", pidfile)
+
+		// configure stop + restart commands with
+		// the same flags as the start command
+		stop = mkcmd(args, "stop")
+		restart = mkcmd(args, "restart")
+	}
+
+	start = mkcmd(args, "start")
+
+	return &Daemon{
+		Name:     name,
+		Start:    strings.Join(start, " "),
+		Stop:     strings.Join(stop, " "),
+		Restart:  strings.Join(restart, " "),
+		Dir:      dir,
+		Stderr:   logfile,
+		Stdout:   logfile,
+		Pidfile:  pidfile,
+		Detached: detached,
+	}
 }
