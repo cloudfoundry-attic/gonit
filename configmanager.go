@@ -23,6 +23,12 @@ import (
 
 type ConfigManager struct {
 	ProcessGroups map[string]*ProcessGroup
+	Settings      *Settings
+}
+
+type Settings struct {
+	AlertTransport string
+	SocketFile     string
 }
 
 type ProcessGroup struct {
@@ -58,6 +64,16 @@ type Process struct {
 	// explicitly set in yaml?
 	Monitor bool
 }
+
+const (
+	CONFIG_FILE_POSTFIX   = "-gonit.yml"
+	SETTINGS_FILENAME     = "gonit.yml"
+	UNIX_SOCKET_TRANSPORT = "unix_socket"
+)
+
+const (
+	DEFAULT_ALERT_TRANSPORT = "none"
+)
 
 // Gets the PID file for a process and returns the PID for it.
 func (p Process) GetPid() (int, error) {
@@ -105,71 +121,107 @@ func (c *ConfigManager) fillInNames() {
 }
 
 // Parses a config file into a ProcessGroup.
-func (c *ConfigManager) parseFile(filename string) (*ProcessGroup, error) {
+func (c *ConfigManager) parseFile(path string) (*ProcessGroup, error) {
 	processGroup := &ProcessGroup{}
-	b, err := ioutil.ReadFile(filename)
+	b, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	if err := goyaml.Unmarshal(b, processGroup); err != nil {
 		return nil, err
 	}
-	log.Printf("loaded '%+v'\n", filename)
+	log.Printf("Loaded config file '%+v'\n", path)
 	return processGroup, nil
 }
 
-// Given a file path, gets the filename and removes -gonit.yml.
-func getGroupName(gonitFilePath string) string {
-	_, filename := filepath.Split(gonitFilePath)
+// Parses a settings file into a Settings struct.
+func (c *ConfigManager) parseSettingsFile(path string) (*Settings, error) {
+	settings := &Settings{}
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := goyaml.Unmarshal(b, settings); err != nil {
+		return nil, err
+	}
+	log.Printf("Loaded settings file: '%+v'\n", path)
+	return settings, nil
+}
+
+// Given a filename, removes -gonit.yml.
+func getGroupName(filename string) string {
 	// -10 because of "-gonit.yml"
 	return filename[:len(filename)-10]
 }
 
 // Parses a directory for gonit files.
-func (c *ConfigManager) parseDir(dirPath string) (map[string]*ProcessGroup,
-	error) {
-	processGroups := c.ProcessGroups
+func (c *ConfigManager) parseDir(dirPath string) error {
 	dir, err := os.Open(dirPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	dirNames, err := dir.Readdirnames(-1)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for _, filename := range dirNames {
-		if strings.HasSuffix(filename, "-gonit.yml") {
-			processGroups[getGroupName(filename)], _ =
+		if strings.HasSuffix(filename, CONFIG_FILE_POSTFIX) {
+			c.ProcessGroups[getGroupName(filename)], _ =
 				c.parseFile(filepath.Join(dirPath, filename))
+			if err != nil {
+				return err
+			}
+		} else if filename == SETTINGS_FILENAME {
+			c.Settings, err = c.parseSettingsFile(filepath.Join(dirPath, filename))
+			if err != nil {
+				return err
+			}
 		}
 	}
-	return processGroups, nil
+	return nil
+}
+
+func (c *ConfigManager) applyDefaultSettings() {
+	settings := c.Settings
+	if settings.AlertTransport == "" {
+		settings.AlertTransport = DEFAULT_ALERT_TRANSPORT
+	}
 }
 
 // Main function to call, parses a path for gonit config file(s).
-func (c *ConfigManager) Parse(path string) error {
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		log.Printf("Error stating path '%+v'.\n", path)
-	}
+func (c *ConfigManager) Parse(paths ...string) error {
 	c.ProcessGroups = map[string]*ProcessGroup{}
-	if fileInfo.IsDir() {
-		if c.ProcessGroups, err = c.parseDir(path); err != nil {
-			return err
+	for _, path := range paths {
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			log.Printf("Error stating path '%+v'.\n", path)
 		}
-	} else {
-		groupName := getGroupName(path)
-		if c.ProcessGroups[groupName], err = c.parseFile(path); err != nil {
-			return err
+		if fileInfo.IsDir() {
+			if err = c.parseDir(path); err != nil {
+				return err
+			}
+		} else {
+			_, filename := filepath.Split(path)
+			groupName := getGroupName(filename)
+			if filename == SETTINGS_FILENAME {
+				if c.Settings, err = c.parseSettingsFile(path); err != nil {
+					return err
+				}
+			} else if strings.HasSuffix(path, CONFIG_FILE_POSTFIX) {
+				if c.ProcessGroups[groupName], err = c.parseFile(path); err != nil {
+					return err
+				}
+			}
 		}
+		c.fillInNames()
 	}
-	c.fillInNames()
-
-	for _, processGroup := range c.ProcessGroups {
-		if err := processGroup.validate(); err != nil {
-			return err
-		}
+	if c.Settings == nil {
+		log.Printf("No settings found, using defaults.")
+	}
+	c.applyDefaultSettings()
+	if err := c.validate(); err != nil {
+		log.Fatal(err)
 	}
 	return nil
 }
@@ -194,7 +246,7 @@ func (pg ProcessGroup) validateRequiredFieldsExist() error {
 }
 
 // Validates various links in a config.
-func (pg ProcessGroup) validateLinks() error {
+func (pg *ProcessGroup) validateLinks() error {
 	// TODO: Validate the event links.
 	for _, process := range pg.Processes {
 		for _, dependsOnName := range process.DependsOn {
@@ -208,12 +260,26 @@ func (pg ProcessGroup) validateLinks() error {
 	return nil
 }
 
-// Validates a process group config.
-func (pg ProcessGroup) validate() error {
-	if err := pg.validateRequiredFieldsExist(); err != nil {
-		return err
+// Valitades settings.
+func (s *Settings) validate() error {
+	if s.AlertTransport == UNIX_SOCKET_TRANSPORT && s.SocketFile == "" {
+		return fmt.Errorf("Settings uses '%v' alerts transport, but has no socket"+
+			" file.", UNIX_SOCKET_TRANSPORT)
 	}
-	if err := pg.validateLinks(); err != nil {
+	return nil
+}
+
+// Validates a process group config.
+func (c *ConfigManager) validate() error {
+	for _, pg := range c.ProcessGroups {
+		if err := pg.validateRequiredFieldsExist(); err != nil {
+			return err
+		}
+		if err := pg.validateLinks(); err != nil {
+			return err
+		}
+	}
+	if err := c.Settings.validate(); err != nil {
 		return err
 	}
 	return nil

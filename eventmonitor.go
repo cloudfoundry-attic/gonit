@@ -15,6 +15,7 @@ import (
 // - Maybe consider changing the way rule checking works so that it timestamps
 //       the last time each rule was checked instead of the way it is?
 // - Debug messages?
+// - Support more than just unix socket for alerts.
 
 // After configmanager gets the rules to be monitored, eventmonitor parses the
 // rules and stores their data as ParsedEvent.
@@ -117,18 +118,14 @@ func checkRule(parsedEvent *ParsedEvent, resourceVal interface{}) (bool,
 type EventMonitor struct {
 	alertEvents     []*ParsedEvent
 	resourceManager ResourceManager
-	unixSocketFile  string
 	configManager   *ConfigManager
 	startTime       int64
 	quitChan        chan bool
 }
 
 // Initializes the eventmonitor by parsing event rules and initializing data
-// structures.  The configmanager is where the events come from, and the
-// unixSocketFile is where alerts are sent to.
-func (e *EventMonitor) setup(configManager *ConfigManager,
-	unixSocketFile string) error {
-	e.unixSocketFile = unixSocketFile
+// structures.  The configmanager is where the events come from.
+func (e *EventMonitor) setup(configManager *ConfigManager) error {
 	e.resourceManager = resourceManager
 	e.configManager = configManager
 	e.alertEvents = []*ParsedEvent{}
@@ -150,11 +147,10 @@ func (e *EventMonitor) setup(configManager *ConfigManager,
 	return nil
 }
 
-// Given a configmanager config and a unix socket to send alerts to, this
-// function starts the eventmonitor on monitoring events and dispatching them.
-func (e *EventMonitor) Start(configManager *ConfigManager,
-	unixSocketFile string) error {
-	err := e.setup(configManager, unixSocketFile)
+// Given a configmanager config, this function starts the eventmonitor on
+// monitoring events and dispatching them.
+func (e *EventMonitor) Start(configManager *ConfigManager) error {
+	err := e.setup(configManager)
 	if err != nil {
 		return err
 	}
@@ -201,14 +197,23 @@ func (e *EventMonitor) Stop() {
 // it for this time period.
 func (e *EventMonitor) checkRules(processName string, pid int) {
 	diffTime := time.Now().Unix() - e.startTime
+	// So we don't check the same thing more than once in a row.
+	cachedResources := map[string]interface{}{}
 	for _, alertEvent := range e.alertEvents {
 		interval := int64(alertEvent.interval.Seconds())
 		if alertEvent.processName == processName &&
 			(interval == 0 || diffTime%interval == 0) {
-			resourceVal, err := e.resourceManager.GetResource(alertEvent, pid)
-			if err != nil {
-				log.Println(err)
-				continue
+			var resourceVal interface{}
+			// Use cache unless we must pull the resource.
+			resourceVal, has_key := cachedResources[alertEvent.resourceName]
+			if !has_key {
+				var err error
+				resourceVal, err = e.resourceManager.GetResource(alertEvent, pid)
+				if err != nil {
+					log.Print(err)
+					continue
+				}
+				cachedResources[alertEvent.resourceName] = resourceVal
 			}
 			ruleTriggered, err := checkRule(alertEvent, resourceVal)
 			if err != nil {
@@ -217,7 +222,9 @@ func (e *EventMonitor) checkRules(processName string, pid int) {
 			}
 			if ruleTriggered {
 				// TODO right now this can block the monitoring loop.
-				e.sendAlert(alertEvent)
+				if err := e.sendAlert(alertEvent); err != nil {
+					log.Print(err)
+				}
 			}
 		}
 	}
@@ -345,10 +352,22 @@ func (e *EventMonitor) parseEvent(event Event, groupName string,
 	return parsedEvent, nil
 }
 
-// Sends an alert over the unix socket.
+// Sends an alerts.
 func (e *EventMonitor) sendAlert(parsedEvent *ParsedEvent) error {
-	// TODO let this send more ways than just over unix socket.  Also, have
-	// configuration in the config file.
+	settings := e.configManager.Settings
+	if settings.AlertTransport == UNIX_SOCKET_TRANSPORT {
+		if err := e.sendUnixSocketAlert(parsedEvent, settings.SocketFile); err != nil {
+			return err
+		}
+	} else {
+		log.Printf("Rule '%v' for process '%v' has triggered for > %v seconds.\n",
+			parsedEvent.ruleString, parsedEvent.processName, parsedEvent.duration)
+	}
+	return nil
+}
+
+func (e *EventMonitor) sendUnixSocketAlert(parsedEvent *ParsedEvent,
+	unixSocketFile string) error {
 	alertMessage := &AlertMessage{
 		Action:      "alert",
 		Rule:        parsedEvent.ruleString,
@@ -363,11 +382,9 @@ func (e *EventMonitor) sendAlert(parsedEvent *ParsedEvent) error {
 	if jsonError != nil {
 		return fmt.Errorf("Error marshalling json: %+v", jsonError)
 	}
-	log.Printf("Rule '%v' for process '%v' has triggered for > %v seconds.\n",
-		parsedEvent.ruleString, parsedEvent.processName, parsedEvent.duration)
-	c, err := net.Dial("unix", e.unixSocketFile)
+	c, err := net.Dial("unix", unixSocketFile)
 	if err != nil {
-		return fmt.Errorf("Could not connect to %v.\n", e.unixSocketFile)
+		return fmt.Errorf("Could not connect to %v.\n", unixSocketFile)
 	}
 	defer c.Close()
 	if _, err := c.Write(message); err != nil {
