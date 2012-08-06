@@ -195,7 +195,7 @@ func TestParseEvent(t *testing.T) {
 		Description: "The best rule ever!",
 	}
 	parsedEvent, err :=
-		eventMonitor.parseEvent(event, "GroupName", "ProcessName")
+		eventMonitor.parseEvent(&event, "GroupName", "ProcessName")
 	if err != nil {
 		t.Fatal(err)
 	}
