@@ -1,0 +1,49 @@
+---
+processes:
+  opentsdb:
+    description: Open source time series database
+    actions:
+      alert:
+        - memory_over_20
+        - proc_over_03
+      restart:
+        - memory_over_5
+    groups: vcap
+    pidfile: /Users/lisbakke/Documents/work/gonit-exp/alerts/dashboard.pid
+    start: /var/vcap/jobs/opentsdb/bin/opentsdb_ctl start
+    stop: /var/vcap/jobs/opentsdb/bin/opentsdb_ctl stop
+    gid: vcap
+    uid: vcap
+    monitor: true
+  dashboard:
+    description: The cloud foundry dashboard.
+    actions:
+      alert:
+        - memory_over_10
+    groups: vcap
+    dependson: opentsdb
+    pidfile: /Users/lisbakke/Documents/work/gonit-exp/alerts/opentsdb.pid
+    start: /var/vcap/jobs/dashboard/bin/dashboard_ctl start
+    stop: /var/vcap/jobs/dashboard/bin/dashboard_ctl stop
+    gid: vcap
+    uid: vcap
+    monitor: true
+events:
+  memory_over_5:
+    description: The memory for a process is too high.
+    rule: memory_used > 5mb
+    interval: 1s
+    duration: 1s
+  memory_over_10:
+    description: The memory for a process is too high.
+    rule: memory_used > 10mb
+    interval: 1s
+    duration: 1s
+  memory_over_20:
+    description: The memory for a process is too high.
+    rule: memory_used > 20mb
+    interval: 1s
+    duration: 1s
+  proc_over_03:
+    description: The proc percent is over 0.3.
+    rule: cpu_percent > 0.3

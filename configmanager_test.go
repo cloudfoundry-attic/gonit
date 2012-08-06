@@ -9,7 +9,25 @@ import (
 	"testing"
 )
 
-// TODO more tests.  Not many now since this stuff may change.
+func assertFileParsed(t *testing.T, configManager *ConfigManager) {
+	assert.Equal(t, 1, len(configManager.ProcessGroups))
+	pg := configManager.ProcessGroups["dashboard"]
+	assert.NotEqual(t, ProcessGroup{}, pg)
+	assert.Equal(t, "dashboard", pg.Name)
+
+	assert.Equal(t, 4, len(pg.Events))
+	opentsdb := pg.Processes["opentsdb"]
+	assert.NotEqual(t, Process{}, opentsdb)
+	dashboard := pg.Processes["dashboard"]
+	assert.NotEqual(t, Process{}, dashboard)
+	assert.Equal(t, 2, len(opentsdb.Actions["alert"]))
+	assert.Equal(t, 1, len(opentsdb.Actions["restart"]))
+	assert.Equal(t, 1, len(dashboard.Actions["alert"]))
+	assert.Equal(t, "memory_used > 5mb", pg.EventByName("memory_over_5").Rule)
+	assert.Equal(t, (*Event)(nil), pg.EventByName("blah"))
+
+	assert.Equal(t, "none", configManager.Settings.AlertTransport)
+}
 
 func TestGetPid(t *testing.T) {
 	file, err := ioutil.TempFile("", "pid")
@@ -21,11 +39,53 @@ func TestGetPid(t *testing.T) {
 	if _, err := file.Write([]byte("1234")); err != nil {
 		t.Fatal(err)
 	}
-	process := Process{}
-	process.Pidfile = file.Name()
-	pid, err := process.Pid()
+	process := Process{Pidfile: file.Name()}
+	pid, err := process.GetPid()
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 1234, pid)
 }
+
+func TestParseDir(t *testing.T) {
+	configManager := ConfigManager{}
+	err := configManager.Parse("test/config/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFileParsed(t, &configManager)
+}
+
+func TestParseFileList(t *testing.T) {
+	configManager := ConfigManager{}
+	err := configManager.Parse("test/config/dashboard-gonit.yml",
+		"test/config/gonit.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFileParsed(t, &configManager)
+}
+
+func TestNoSettingsLoadsDefaults(t *testing.T) {
+	configManager := ConfigManager{}
+	err := configManager.Parse("test/config/dashboard-gonit.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "none", configManager.Settings.AlertTransport)
+}
+
+func TestLoadBadDir(t *testing.T) {
+	configManager := ConfigManager{}
+	err := configManager.Parse("Bad/Dir")
+	assert.NotEqual(t, nil, err)
+	assert.Equal(t, "Error stating path 'Bad/Dir'.\n", err.Error())
+}
+
+// func TestRequiredFieldsExist(t *testing.T) {
+// 	pg := ProcessGroup{}
+// 	process := Process{
+// 		
+// 	}
+// 	processes := []Process
+// }
