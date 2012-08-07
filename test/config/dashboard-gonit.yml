@@ -44,5 +44,5 @@ events:
     interval: 1s
     duration: 1s
   proc_over_03:
-    description: The proc percent is over 0.3.
-    rule: cpu_percent > 0.3
+    description: The proc percent is over 30.
+    rule: cpu_percent > 30

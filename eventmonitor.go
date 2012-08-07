@@ -21,7 +21,7 @@ import (
 // rules and stores their data as ParsedEvent.
 type ParsedEvent struct {
 	operator     int
-	ruleAmount   interface{}
+	ruleAmount   uint64
 	resourceName string
 	ruleString   string
 	duration     time.Duration
@@ -60,23 +60,6 @@ func isAnOperatorChar(operatorChar string) bool {
 		operatorChar == "!"
 }
 
-// A float64 comparison function that compares a resource's value to the
-// expected value in the event rule.
-func compareFloat64(resourceVal float64, operator int,
-	ruleAmount float64) bool {
-	switch operator {
-	case EQ_OPERATOR:
-		return resourceVal == ruleAmount
-	case NEQ_OPERATOR:
-		return resourceVal != ruleAmount
-	case GT_OPERATOR:
-		return resourceVal > ruleAmount
-	case LT_OPERATOR:
-		return resourceVal < ruleAmount
-	}
-	return false
-}
-
 // A uint64 comparison function that compares a resource's value to the
 // expected value in the event rule.
 func compareUint64(resourceVal uint64, operator int, ruleAmount uint64) bool {
@@ -95,20 +78,9 @@ func compareUint64(resourceVal uint64, operator int, ruleAmount uint64) bool {
 
 // Given a ParsedEvent and a resource value, returns whether the event rule is
 // triggered.
-func checkRule(parsedEvent *ParsedEvent, resourceVal interface{}) (bool,
-	error) {
-	switch resourceVal.(type) {
-	case float64:
-		rv := resourceVal.(float64)
-		return compareFloat64(rv, parsedEvent.operator,
-			parsedEvent.ruleAmount.(float64)), nil
-	case uint64:
-		rv := resourceVal.(uint64)
-		return compareUint64(rv, parsedEvent.operator,
-			parsedEvent.ruleAmount.(uint64)), nil
-	}
-	return false, fmt.Errorf("Resource '%v' with value '%v' is not a known type.",
-		parsedEvent.resourceName, resourceVal)
+func checkRule(parsedEvent *ParsedEvent, resourceVal uint64) bool {
+	return compareUint64(resourceVal, parsedEvent.operator,
+		parsedEvent.ruleAmount)
 }
 
 // Managers the monitoring of event rules.  It gets the rules from the
@@ -125,18 +97,20 @@ type EventMonitor struct {
 
 // Initializes the eventmonitor by parsing event rules and initializing data
 // structures.  The configmanager is where the events come from.
-func (e *EventMonitor) setup(configManager *ConfigManager) error {
+func (e *EventMonitor) setup(configManager *ConfigManager) {
 	e.resourceManager = resourceManager
 	e.configManager = configManager
 	e.alertEvents = []*ParsedEvent{}
 	for _, group := range e.configManager.ProcessGroups {
 		for _, process := range group.Processes {
-			for _, actions := range process.Actions {
+			for actionName, actions := range process.Actions {
 				for _, eventName := range actions {
-					err := e.loadEvent(group.EventByName(eventName), group.Name,
+					event := group.EventByName(eventName)
+					err := e.loadEvent(event, group.Name,
 						process)
 					if err != nil {
-						return err
+						log.Printf("Did not load rule '%v' on action '%v' because of "+
+							"error: '%v'.", eventName, actionName, err.Error())
 					}
 				}
 			}
@@ -144,16 +118,12 @@ func (e *EventMonitor) setup(configManager *ConfigManager) error {
 	}
 	e.startTime = time.Now().Unix()
 	e.quitChan = make(chan bool)
-	return nil
 }
 
 // Given a configmanager config, this function starts the eventmonitor on
 // monitoring events and dispatching them.
 func (e *EventMonitor) Start(configManager *ConfigManager) error {
-	err := e.setup(configManager)
-	if err != nil {
-		return err
-	}
+	e.setup(configManager)
 
 	go func() {
 		timeToWait := 1 * time.Second
@@ -188,6 +158,7 @@ func (e *EventMonitor) Start(configManager *ConfigManager) error {
 }
 
 func (e *EventMonitor) Stop() {
+	// TODO clean up the rules so when start is called the same ones aren't reloaded.
 	e.quitChan <- true
 	close(e.quitChan)
 	e.resourceManager.CleanData()
@@ -198,12 +169,12 @@ func (e *EventMonitor) Stop() {
 func (e *EventMonitor) checkRules(processName string, pid int) {
 	diffTime := time.Now().Unix() - e.startTime
 	// So we don't check the same thing more than once in a row.
-	cachedResources := map[string]interface{}{}
+	cachedResources := map[string]uint64{}
 	for _, alertEvent := range e.alertEvents {
 		interval := int64(alertEvent.interval.Seconds())
 		if alertEvent.processName == processName &&
 			(interval == 0 || diffTime%interval == 0) {
-			var resourceVal interface{}
+			var resourceVal uint64
 			// Use cache unless we must pull the resource.
 			resourceVal, has_key := cachedResources[alertEvent.resourceName]
 			if !has_key {
@@ -215,11 +186,7 @@ func (e *EventMonitor) checkRules(processName string, pid int) {
 				}
 				cachedResources[alertEvent.resourceName] = resourceVal
 			}
-			ruleTriggered, err := checkRule(alertEvent, resourceVal)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
+			ruleTriggered := checkRule(alertEvent, resourceVal)
 			if ruleTriggered {
 				// TODO right now this can block the monitoring loop.
 				if err := e.sendAlert(alertEvent); err != nil {
@@ -238,14 +205,18 @@ func (e *EventMonitor) loadEvent(event *Event, groupName string,
 	if err != nil {
 		return err
 	}
-	e.alertEvents = append(e.alertEvents, parsedEvent)
+
+	if err = e.validateInterval(parsedEvent); err == nil {
+		e.alertEvents = append(e.alertEvents, parsedEvent)
+	} else {
+		return err
+	}
 	return nil
 }
 
 // Given a rule string such as 'memory_used >= 32mb', returns the ruleAmount
 // (32mb in b), operator (>=) and resourceName (memory_used).
-func (e *EventMonitor) parseRule(
-	rule string) (interface{}, int, string, error) {
+func (e *EventMonitor) parseRule(rule string) (uint64, int, string, error) {
 	startFirstPart, startLastPart := -1, -1
 	var firstPart, operator, lastPart, ruleAmount, resourceName string
 	operatorFound := false
@@ -336,6 +307,13 @@ func (e *EventMonitor) parseEvent(event *Event, groupName string,
 		return nil, err
 	}
 
+	if resourceName == CPU_PERCENT_NAME &&
+		(parsedDuration.Seconds() / parsedInterval.Seconds()) <= 1 {
+		return nil, fmt.Errorf("Rule '%v' duration / interval must be greater "+
+			"than 1.  It is '%+v / %+v'.", rule, parsedDuration.Seconds(),
+			parsedInterval.Seconds())
+	}
+
 	parsedEvent := &ParsedEvent{
 		operator:     operator,
 		ruleAmount:   ruleAmount,
@@ -360,6 +338,20 @@ func (e *EventMonitor) sendAlert(parsedEvent *ParsedEvent) error {
 	} else {
 		log.Printf("Rule '%v' for process '%v' has triggered for > %v seconds.\n",
 			parsedEvent.ruleString, parsedEvent.processName, parsedEvent.duration)
+	}
+	return nil
+}
+
+func (e *EventMonitor) validateInterval(parsedEvent *ParsedEvent) error {
+	for _, event := range e.alertEvents {
+		if event.processName == parsedEvent.processName &&
+			event.resourceName == parsedEvent.resourceName {
+			if event.interval != parsedEvent.interval {
+				return fmt.Errorf("Two rules ('%v' and '%v') on '%v' have different "+
+					"poll intervals for the same resource '%v'.", event.ruleString,
+					parsedEvent.ruleString, event.processName, event.resourceName)
+			}
+		}
 	}
 	return nil
 }
