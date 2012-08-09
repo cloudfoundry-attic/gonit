@@ -22,24 +22,8 @@ var byteOrder = binary.LittleEndian
 
 const DEFAULT_ENV_PATH = "PATH=/bin:/usr/bin:/sbin:/usr/sbin"
 
-type Daemon struct {
-	Name       string
-	User       string
-	Group      string
-	Stdout     string
-	Stderr     string
-	Env        []string
-	Dir        string
-	credential *syscall.Credential
-	Pidfile    string
-	Start      string
-	Stop       string
-	Restart    string
-	Detached   bool
-}
-
 // Redirect child process fd (stdout | stderr) to a file
-func (d *Daemon) Redirect(fd *io.Writer, where string) error {
+func (p *Process) Redirect(fd *io.Writer, where string) error {
 	if where == "" {
 		return nil
 	}
@@ -56,10 +40,15 @@ func (d *Daemon) Redirect(fd *io.Writer, where string) error {
 }
 
 // exec.Cmd wrapper
-func (d *Daemon) Command(program string) (*exec.Cmd, error) {
-	err := d.lookupCredentials()
-	if err != nil {
-		return nil, err
+func (p *Process) Command(program string) (*exec.Cmd, error) {
+	var credential *syscall.Credential
+
+	if p.Uid != "" || p.Gid != "" {
+		credential = &syscall.Credential{}
+		err := p.lookupCredentials(credential)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	argv := strings.Fields(program)
@@ -73,18 +62,18 @@ func (d *Daemon) Command(program string) (*exec.Cmd, error) {
 	defaultEnv := []string{
 		DEFAULT_ENV_PATH,
 	}
-	env := make([]string, len(defaultEnv)+len(d.Env))
+	env := make([]string, len(defaultEnv)+len(p.Env))
 	copy(env, defaultEnv)
-	copy(env[len(defaultEnv):], d.Env)
+	copy(env[len(defaultEnv):], p.Env)
 
 	cmd := &exec.Cmd{
 		Path: path,
 		Args: argv,
 		Env:  env,
-		Dir:  d.Dir,
+		Dir:  p.Dir,
 		SysProcAttr: &syscall.SysProcAttr{
 			Setsid:     true,
-			Credential: d.credential,
+			Credential: credential,
 		},
 	}
 
@@ -93,19 +82,19 @@ func (d *Daemon) Command(program string) (*exec.Cmd, error) {
 
 // Fork+Exec program with std{out,err} redirected and
 // new session so program becomes the session and process group leader.
-func (d *Daemon) Spawn(program string) (*exec.Cmd, error) {
-	cmd, err := d.Command(program)
+func (p *Process) Spawn(program string) (*exec.Cmd, error) {
+	cmd, err := p.Command(program)
 
 	if err != nil {
 		return nil, err
 	}
 
-	err = d.Redirect(&cmd.Stderr, d.Stderr)
+	err = p.Redirect(&cmd.Stderr, p.Stderr)
 	if err != nil {
 		return nil, err
 	}
 
-	err = d.Redirect(&cmd.Stdout, d.Stdout)
+	err = p.Redirect(&cmd.Stdout, p.Stdout)
 	if err != nil {
 		return nil, err
 	}
@@ -119,9 +108,9 @@ func (d *Daemon) Spawn(program string) (*exec.Cmd, error) {
 // If Detached == true; process must detached itself and
 // manage its own Pidfile.
 // Otherwise; we will detach the process and manage its Pidfile.
-func (d *Daemon) StartProcess() (int, error) {
-	if d.Detached {
-		cmd, err := d.Spawn(d.Start)
+func (p *Process) StartProcess() (int, error) {
+	if p.Detached {
+		cmd, err := p.Spawn(p.Start)
 		if err != nil {
 			return 0, err
 		}
@@ -149,7 +138,7 @@ func (d *Daemon) StartProcess() (int, error) {
 
 		status := 0
 
-		cmd, err := d.Spawn(d.Start)
+		cmd, err := p.Spawn(p.Start)
 		if err == nil {
 			// write pid to parent
 			err = binary.Write(pw, byteOrder, int32(cmd.Process.Pid))
@@ -187,7 +176,7 @@ func (d *Daemon) StartProcess() (int, error) {
 		err = binary.Read(pr, byteOrder, &pid)
 
 		if err == nil {
-			err = d.SavePid(int(pid))
+			err = p.SavePid(int(pid))
 		}
 
 		return int(pid), err
@@ -199,16 +188,16 @@ func (d *Daemon) StartProcess() (int, error) {
 // Stop a process:
 // Spawn Stop program if configured,
 // otherwise send SIGTERM.
-func (d *Daemon) StopProcess() error {
-	if d.Stop == "" {
-		pid, err := d.Pid()
+func (p *Process) StopProcess() error {
+	if p.Stop == "" {
+		pid, err := p.Pid()
 		if err != nil {
 			return err
 		}
 		return syscall.Kill(pid, syscall.SIGTERM)
 	}
 
-	cmd, err := d.Spawn(d.Stop)
+	cmd, err := p.Spawn(p.Stop)
 	if err != nil {
 		return err
 	}
@@ -219,17 +208,17 @@ func (d *Daemon) StopProcess() error {
 // Restart a process:
 // Spawn Restart program if configured,
 // otherwise call StopProcess() + StartProcess()
-func (d *Daemon) RestartProcess() error {
-	if d.Restart == "" {
-		err := d.StopProcess()
+func (p *Process) RestartProcess() error {
+	if p.Restart == "" {
+		err := p.StopProcess()
 		if err != nil {
 			return err
 		}
-		_, err = d.StartProcess()
+		_, err = p.StartProcess()
 		return err
 	}
 
-	cmd, err := d.Spawn(d.Restart)
+	cmd, err := p.Spawn(p.Restart)
 	if err != nil {
 		return err
 	}
@@ -238,8 +227,8 @@ func (d *Daemon) RestartProcess() error {
 }
 
 // Helper method to check if process is running via Pidfile
-func (d *Daemon) IsRunning() bool {
-	pid, err := d.Pid()
+func (p *Process) IsRunning() bool {
+	pid, err := p.Pid()
 	if err != nil {
 		return false
 	}
@@ -262,8 +251,8 @@ func ReadPidFile(path string) (int, error) {
 }
 
 // Read pid from Pidfile
-func (d *Daemon) Pid() (int, error) {
-	return ReadPidFile(d.Pidfile)
+func (p *Process) Pid() (int, error) {
+	return ReadPidFile(p.Pidfile)
 }
 
 // Write pid to a file
@@ -274,17 +263,17 @@ func WritePidFile(pid int, path string) error {
 }
 
 // Write pid to Pidfile
-func (d *Daemon) SavePid(pid int) error {
-	return WritePidFile(pid, d.Pidfile)
+func (p *Process) SavePid(pid int) error {
+	return WritePidFile(pid, p.Pidfile)
 }
 
 // If User is configured, lookup and set Uid
-func (d *Daemon) lookupUid() error {
-	if d.User == "" {
+func (p *Process) lookupUid(credential *syscall.Credential) error {
+	if p.Uid == "" {
 		return nil
 	}
 
-	id, err := user.Lookup(d.User)
+	id, err := user.Lookup(p.Uid)
 	if err != nil {
 		return err
 	}
@@ -292,46 +281,40 @@ func (d *Daemon) lookupUid() error {
 	uid, _ := strconv.Atoi(id.Uid)
 	gid, _ := strconv.Atoi(id.Gid)
 
-	if d.credential == nil {
-		d.credential = &syscall.Credential{
-			Uid: uint32(uid),
-			Gid: uint32(gid),
-		}
-	} else {
-		d.credential.Uid = uint32(uid)
+	credential.Uid = uint32(uid)
+
+	if p.Gid == "" {
+		credential.Gid = uint32(gid)
 	}
 
 	return nil
 }
 
 // If Group is configured, lookup and set Gid
-func (d *Daemon) lookupGid() error {
-	if d.Group == "" {
+func (p *Process) lookupGid(credential *syscall.Credential) error {
+	if p.Gid == "" {
 		return nil
 	}
 
-	gid, err := LookupGroupId(d.Group)
+	gid, err := LookupGroupId(p.Gid)
 	if err != nil {
 		return err
 	}
 
-	if d.credential == nil {
-		d.credential = &syscall.Credential{
-			Uid: uint32(os.Getuid()),
-			Gid: uint32(gid),
-		}
-	} else {
-		d.credential.Uid = uint32(gid)
+	credential.Gid = uint32(gid)
+
+	if p.Uid == "" {
+		credential.Uid = uint32(os.Getuid())
 	}
 
 	return nil
 }
 
-func (d *Daemon) lookupCredentials() error {
-	if err := d.lookupUid(); err != nil {
+func (p *Process) lookupCredentials(credential *syscall.Credential) error {
+	if err := p.lookupUid(credential); err != nil {
 		return err
 	}
-	if err := d.lookupGid(); err != nil {
+	if err := p.lookupGid(credential); err != nil {
 		return err
 	}
 	return nil

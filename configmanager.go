@@ -48,16 +48,21 @@ type Action struct {
 }
 
 type Process struct {
-	Daemon
 	Name        string
-	Description string
 	Pidfile     string
 	Start       string
 	Stop        string
-	DependsOn   []string
-	Actions     map[string][]string
+	Restart     string
 	Gid         string
 	Uid         string
+	Stdout      string
+	Stderr      string
+	Env         []string
+	Dir         string
+	Detached    bool
+	Description string
+	DependsOn   []string
+	Actions     map[string][]string
 	// TODO How do we make it so Monitor is true by default and only false when
 	// explicitly set in yaml?
 	Monitor bool
@@ -179,8 +184,8 @@ func (c *ConfigManager) parseFile(path string) error {
 		}
 	} else if strings.HasSuffix(filename, CONFIG_FILE_POSTFIX) {
 		groupName := getGroupName(filename)
-		if c.ProcessGroups[groupName], err = c.parseConfigFile(path);
-			err != nil {
+		c.ProcessGroups[groupName], err = c.parseConfigFile(path)
+		if err != nil {
 			return err
 		}
 	}
@@ -206,7 +211,7 @@ func (c *ConfigManager) Parse(paths ...string) error {
 		}
 		c.fillInNames()
 	}
-	c.fillInDaemon()
+
 	if c.Settings == nil {
 		log.Printf("No settings found, using defaults.")
 	}
@@ -215,19 +220,6 @@ func (c *ConfigManager) Parse(paths ...string) error {
 		return err
 	}
 	return nil
-}
-
-func (c *ConfigManager) fillInDaemon() {
-	for _, pg := range c.ProcessGroups {
-		for _, process := range pg.Processes {
-			process.Daemon.Name = process.Name
-			process.Daemon.Pidfile = process.Pidfile
-			process.Daemon.Start = process.Start
-			process.Daemon.Stop = process.Stop
-			process.Daemon.Group = pg.Name
-			process.Daemon.User = process.User
-		}
-	}
 }
 
 // Validates that certain fields exist in the config file.

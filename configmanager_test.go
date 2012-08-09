@@ -39,8 +39,7 @@ func TestGetPid(t *testing.T) {
 	if _, err := file.Write([]byte("1234")); err != nil {
 		t.Fatal(err)
 	}
-	daemon := Daemon{ Pidfile: file.Name() }
-	process := Process{Daemon: daemon}
+	process := Process{Pidfile: file.Name()}
 	process.Pidfile = file.Name()
 	pid, err := process.Pid()
 	if err != nil {
@@ -90,7 +89,7 @@ func TestRequiredFieldsExist(t *testing.T) {
 	processes["foobar"] = process
 	pg := ProcessGroup{Processes: processes}
 	processErr := "foobar must have name, description, pidfile and start."
-	eventsErr :=  "some_event must have name, description, rule, and actions."
+	eventsErr := "some_event must have name, description, rule, and actions."
 
 	err := pg.validateRequiredFieldsExist()
 	assert.Equal(t, processErr, err.Error())

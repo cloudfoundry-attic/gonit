@@ -182,8 +182,8 @@ func WithRpcServer(f func(c *rpc.Client)) error {
 	return nil
 }
 
-func Cleanup(daemon *Daemon) {
-	os.RemoveAll(daemon.Dir)
+func Cleanup(p *Process) {
+	os.RemoveAll(p.Dir)
 }
 
 func mkcmd(args []string, action string) []string {
@@ -192,7 +192,7 @@ func mkcmd(args []string, action string) []string {
 	return append(cmd, action)
 }
 
-func NewTestDaemon(name string, flags []string, detached bool) *Daemon {
+func NewTestProcess(name string, flags []string, detached bool) *Process {
 	// using '/tmp' rather than os.TempDir, otherwise 'sudo -E go test'
 	// will fail on darwin, since only the user that started the process
 	// has rx perms
@@ -238,7 +238,7 @@ func NewTestDaemon(name string, flags []string, detached bool) *Daemon {
 
 	start = mkcmd(args, "start")
 
-	return &Daemon{
+	return &Process{
 		Name:     name,
 		Start:    strings.Join(start, " "),
 		Stop:     strings.Join(stop, " "),
