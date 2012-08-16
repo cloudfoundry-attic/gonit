@@ -109,7 +109,7 @@ func RpcArgs(method string, name string, isGroup bool) (string, string) {
 		if isGroup {
 			kind = "Group"
 		} else {
-			kind = "Service"
+			kind = "Process"
 		}
 
 		if name == "all" {

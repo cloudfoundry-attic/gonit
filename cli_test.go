@@ -21,7 +21,7 @@ type MockAPI struct {
 	api *API
 }
 
-func (*MockAPI) StopService(name string, r *ActionResult) error {
+func (*MockAPI) StopProcess(name string, r *ActionResult) error {
 	if name == "foo" {
 		return nil
 	}

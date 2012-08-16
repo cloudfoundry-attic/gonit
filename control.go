@@ -128,13 +128,13 @@ func (c *Control) State(process *Process) *processState {
 
 // Invoke given action for the given process and its
 // dependents and/or dependencies
-func (c *Control) DoAction(name string, action int) bool {
+func (c *Control) DoAction(name string, action int) error {
 	c.visits = make(map[string]*visitor)
 
 	process, err := c.Config().FindProcess(name)
 	if err != nil {
 		log.Print(err)
-		return false
+		return err
 	}
 
 	switch action {
@@ -142,7 +142,7 @@ func (c *Control) DoAction(name string, action int) bool {
 		if process.IsRunning() {
 			log.Printf("Process %q already running", name)
 			c.monitorSet(process)
-			return true
+			return nil
 		}
 		c.doDepend(process, ACTION_STOP, false)
 		c.doStart(process)
@@ -169,12 +169,13 @@ func (c *Control) DoAction(name string, action int) bool {
 		c.doUnmonitor(process)
 
 	default:
-		log.Printf("process %q -- invalid action: %d",
+		err = fmt.Errorf("process %q -- invalid action: %d",
 			process.Name, action)
-		return false
+		log.Print(err)
+		return err
 	}
 
-	return true
+	return nil
 }
 
 // Start the given Process dependencies before starting Process
