@@ -129,9 +129,14 @@ func runCommand(cmd, arg string) {
 
 	reply, err := client.Call(method, name)
 
-	log.Printf("%#v", reply) // XXX make perty
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if formatter, ok := reply.(gonit.CliFormatter); ok {
+		formatter.Print(os.Stdout)
+	} else {
+		log.Printf("%#v", reply) // TODO make perty
 	}
 }
 

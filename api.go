@@ -4,7 +4,7 @@ package gonit
 
 import (
 	"errors"
-	"fmt"
+	"github.com/cloudfoundry/gosigar"
 )
 
 // until stubs are implemented
@@ -14,12 +14,18 @@ type API struct {
 	control *Control
 }
 
+type ProcessSummary struct {
+	Name         string
+	Running      bool
+	ControlState processState
+}
+
 type ProcessStatus struct {
-	Name   string
-	Type   int
-	Mode   int
-	Status int
-	// XXX cpu, mem, etc
+	Summary ProcessSummary
+	Pid     int
+	State   sigar.ProcState
+	Time    sigar.ProcTime
+	Mem     sigar.ProcMem
 }
 
 type SystemStatus struct {
@@ -27,8 +33,12 @@ type SystemStatus struct {
 }
 
 type ProcessGroupStatus struct {
-	Name     string
-	Processs []ProcessStatus
+	Name  string
+	Group []ProcessStatus
+}
+
+type Summary struct {
+	Processes []ProcessSummary
 }
 
 type About struct {
@@ -92,24 +102,56 @@ func (a *API) UnmonitorProcess(name string, r *ActionResult) error {
 	return a.control.callAction(name, r, ACTION_UNMONITOR)
 }
 
+func (c *Control) processSummary(process *Process, summary *ProcessSummary) {
+	summary.Name = process.Name
+	summary.Running = process.IsRunning()
+	summary.ControlState = *c.State(process)
+}
+
+func (c *Control) processStatus(process *Process, status *ProcessStatus) error {
+	c.processSummary(process, &status.Summary)
+
+	if !status.Summary.Running {
+		return nil
+	}
+
+	pid, err := process.Pid()
+	if err != nil {
+		return err
+	}
+	status.Pid = pid
+
+	status.State.Get(pid)
+	status.Time.Get(pid)
+	status.Mem.Get(pid)
+
+	return nil
+}
+
 func (a *API) StatusProcess(name string, r *ProcessStatus) error {
-	return notimpl
+	process, err := a.control.Config().FindProcess(name)
+
+	if err != nil {
+		return err
+	}
+
+	return a.control.processStatus(process, r)
 }
 
 // *Group methods apply to a service group
 
 func (c *Control) groupAction(name string, r *ActionResult, action int) error {
-	group, exists := c.Config().ProcessGroups[name]
+	group, err := c.Config().FindGroup(name)
 
-	if exists {
-		for name := range group.Processes {
-			c.callAction(name, r, action)
-		}
-		return nil
+	if err != nil {
+		return &ActionError{err}
 	}
 
-	err := fmt.Errorf("process group %q does not exist", name)
-	return &ActionError{err}
+	for name := range group.Processes {
+		c.callAction(name, r, action)
+	}
+
+	return nil
 }
 
 func (a *API) StartGroup(name string, r *ActionResult) error {
@@ -132,8 +174,29 @@ func (a *API) UnmonitorGroup(name string, r *ActionResult) error {
 	return a.control.groupAction(name, r, ACTION_UNMONITOR)
 }
 
+func (c *Control) groupStatus(group *ProcessGroup,
+	groupStatus *ProcessGroupStatus) error {
+
+	for _, process := range group.Processes {
+		status := ProcessStatus{}
+		c.processStatus(process, &status)
+		groupStatus.Group = append(groupStatus.Group, status)
+	}
+
+	return nil
+}
+
 func (a *API) StatusGroup(name string, r *ProcessGroupStatus) error {
-	return notimpl
+	group, err := a.control.Config().FindGroup(name)
+
+	if err != nil {
+		return err
+	}
+
+	r.Name = name
+	a.control.groupStatus(group, r)
+
+	return nil
 }
 
 // *All methods apply to all services
@@ -168,7 +231,25 @@ func (a *API) UnmonitorAll(unused interface{}, r *ActionResult) error {
 }
 
 func (a *API) StatusAll(name string, r *ProcessGroupStatus) error {
-	return notimpl
+	r.Name = name
+
+	for _, processGroup := range a.control.Config().ProcessGroups {
+		a.control.groupStatus(processGroup, r)
+	}
+
+	return nil
+}
+
+func (a *API) Summary(unused interface{}, s *Summary) error {
+	for _, group := range a.control.Config().ProcessGroups {
+		for _, process := range group.Processes {
+			summary := ProcessSummary{}
+			a.control.processSummary(process, &summary)
+			s.Processes = append(s.Processes, summary)
+		}
+	}
+
+	return nil
 }
 
 // server info
