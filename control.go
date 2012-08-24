@@ -81,6 +81,15 @@ func (c *ConfigManager) FindProcess(name string) (*Process, error) {
 	return nil, fmt.Errorf("process %q not found", name)
 }
 
+// XXX TODO should probably be in configmanager.go
+// Helper method to find a ProcessGroup by name
+func (c *ConfigManager) FindGroup(name string) (*ProcessGroup, error) {
+	if group, exists := c.ProcessGroups[name]; exists {
+		return group, nil
+	}
+	return nil, fmt.Errorf("process group %q not found", name)
+}
+
 // configManager accessor (exported for tests)
 func (c *Control) Config() *ConfigManager {
 	if c.configManager == nil {
