@@ -23,23 +23,6 @@ func TestIsAnOperatorChar(t *testing.T) {
 	assert.Equal(t, false, isAnOperatorChar("=="))
 }
 
-func TestcompareFloat64(t *testing.T) {
-	pointSix := float64(0.6)
-	pointFiveNine := float64(0.59)
-	assert.Equal(t, true, compareFloat64(pointSix, EQ_OPERATOR, 0.6))
-	assert.Equal(t, false, compareFloat64(pointSix, EQ_OPERATOR, 0.61))
-
-	assert.Equal(t, true, compareFloat64(pointSix, NEQ_OPERATOR, 0.5))
-
-	assert.Equal(t, false, compareFloat64(pointSix, LT_OPERATOR, 0.5))
-	assert.Equal(t, false, compareFloat64(pointSix, LT_OPERATOR, 0.6))
-	assert.Equal(t, true, compareFloat64(pointFiveNine, LT_OPERATOR, 0.6))
-
-	assert.Equal(t, true, compareFloat64(pointSix, GT_OPERATOR, 0.5))
-	assert.Equal(t, false, compareFloat64(pointSix, GT_OPERATOR, 0.6))
-	assert.Equal(t, false, compareFloat64(pointFiveNine, GT_OPERATOR, 0.6))
-}
-
 func TestCompareUint64(t *testing.T) {
 	sixty := uint64(60)
 	fiftyNine := uint64(59)
@@ -57,20 +40,6 @@ func TestCompareUint64(t *testing.T) {
 	assert.Equal(t, false, compareUint64(fiftyNine, GT_OPERATOR, 60))
 }
 
-func TestCheckRuleFloat(t *testing.T) {
-	parsedEvent := &ParsedEvent{
-		operator:     EQ_OPERATOR,
-		ruleAmount:   0.7,
-		resourceName: "memory_used",
-	}
-	resourceVal := 0.7
-	triggering, err := checkRule(parsedEvent, resourceVal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, true, triggering)
-}
-
 func TestCheckRuleUint(t *testing.T) {
 	parsedEvent := &ParsedEvent{
 		operator:     EQ_OPERATOR,
@@ -78,25 +47,8 @@ func TestCheckRuleUint(t *testing.T) {
 		resourceName: "memory_used",
 	}
 	resourceVal := uint64(7)
-	triggering, err := checkRule(parsedEvent, resourceVal)
-	if err != nil {
-		t.Fatal(err)
-	}
+	triggering := checkRule(parsedEvent, resourceVal)
 	assert.Equal(t, true, triggering)
-}
-
-func TestCheckRuleFalseFloat(t *testing.T) {
-	parsedEvent := &ParsedEvent{
-		operator:     EQ_OPERATOR,
-		ruleAmount:   0.8,
-		resourceName: "memory_used",
-	}
-	resourceVal := 0.7
-	triggering, err := checkRule(parsedEvent, resourceVal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, false, triggering)
 }
 
 func TestCheckRuleFalseUint(t *testing.T) {
@@ -106,23 +58,8 @@ func TestCheckRuleFalseUint(t *testing.T) {
 		resourceName: "memory_used",
 	}
 	resourceVal := uint64(7)
-	triggering, err := checkRule(parsedEvent, resourceVal)
-	if err != nil {
-		t.Fatal(err)
-	}
+	triggering := checkRule(parsedEvent, resourceVal)
 	assert.Equal(t, false, triggering)
-}
-
-func TestCheckRuleError(t *testing.T) {
-	parsedEvent := &ParsedEvent{
-		operator:     EQ_OPERATOR,
-		ruleAmount:   true,
-		resourceName: "memory_used",
-	}
-	resourceVal := true
-	_, err := checkRule(parsedEvent, resourceVal)
-	assert.Equal(t, "Resource 'memory_used' with value 'true' is not a known "+
-		"type.", err.Error())
 }
 
 func TestParseRuleForwards(t *testing.T) {
@@ -131,7 +68,7 @@ func TestParseRuleForwards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
+	assert.Equal(t, TWO_GB, ruleAmount)
 	assert.Equal(t, EQ_OPERATOR, operator)
 	assert.Equal(t, "memory_used", resourceName)
 }
@@ -142,7 +79,7 @@ func TestParseRuleBackwards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
+	assert.Equal(t, TWO_GB, ruleAmount)
 	assert.Equal(t, EQ_OPERATOR, operator)
 	assert.Equal(t, "memory_used", resourceName)
 }
@@ -153,7 +90,7 @@ func TestParseRuleSpaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
+	assert.Equal(t, TWO_GB, ruleAmount)
 	assert.Equal(t, EQ_OPERATOR, operator)
 	assert.Equal(t, "memory_used", resourceName)
 }
@@ -164,7 +101,7 @@ func TestParseRuleGt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
+	assert.Equal(t, TWO_GB, ruleAmount)
 	assert.Equal(t, GT_OPERATOR, operator)
 	assert.Equal(t, "memory_used", resourceName)
 }
@@ -175,7 +112,7 @@ func TestParseRuleLt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount.(uint64))
+	assert.Equal(t, TWO_GB, ruleAmount)
 	assert.Equal(t, LT_OPERATOR, operator)
 	assert.Equal(t, "memory_used", resourceName)
 }
@@ -190,7 +127,7 @@ func TestParseRuleInvalidResourceError(t *testing.T) {
 func TestParseEvent(t *testing.T) {
 	event := Event{
 		Rule:        "memory_used>2gb",
-		Duration:    "8s",
+		Duration:    "10s",
 		Interval:    "10s",
 		Description: "The best rule ever!",
 	}
@@ -202,4 +139,31 @@ func TestParseEvent(t *testing.T) {
 	assert.Equal(t, GT_OPERATOR, parsedEvent.operator)
 	assert.Equal(t, "memory_used", parsedEvent.resourceName)
 	assert.Equal(t, TWO_GB, parsedEvent.ruleAmount)
+}
+
+func TestParseBadIntervalEvents(t *testing.T) {
+	event1 := Event{
+		Rule:        "memory_used>2gb",
+		Duration:    "8s",
+		Interval:    "10s",
+		Description: "The best rule ever!",
+	}
+	event2 := Event{
+		Rule:        "cpu_percent>60",
+		Duration:    "10s",
+		Interval:    "10s",
+		Description: "The best rule ever!",
+	}
+	_, err := eventMonitor.parseEvent(&event1, "GroupName", "ProcessName")
+	if err != nil {
+		assert.Equal(t,
+			"Rule 'memory_used>2gb' duration / interval must be an integer.",
+			err.Error())
+	}
+	_, err = eventMonitor.parseEvent(&event2, "GroupName", "ProcessName")
+	if err != nil {
+		assert.Equal(t,
+			"Rule 'cpu_percent>60' duration / interval must be greater than 1.  It "+
+				"is '10 / 10'.", err.Error())
+	}
 }
