@@ -7,38 +7,20 @@ import (
 	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
 	"net/rpc"
-	"strings"
 	"testing"
 )
 
 var rpcName = "TestAPI"
 
 func init() {
-	rpc.RegisterName(rpcName, NewAPI(nil))
+	rpc.RegisterName(rpcName, &API{})
 }
 
-func isActionError(err error) bool {
-	return strings.HasPrefix(err.Error(), "ActionError")
-}
-
-func TestActionsNoConfig(t *testing.T) {
+func TestStartAll(t *testing.T) {
 	err := helper.WithRpcServer(func(c *rpc.Client) {
-		reply := &ActionResult{}
-		err := c.Call(rpcName+".StartAll", "", reply)
-		assert.Equal(t, nil, err)
-		// Total == 0 since no processes are configured
-		assert.Equal(t, 0, reply.Total)
-		assert.Equal(t, 0, reply.Errors)
-
-		reply = &ActionResult{}
-		err = c.Call(rpcName+".StartProcess", "foo", reply)
+		reply := ActionResult{}
+		err := c.Call(rpcName+".StartAll", "", &reply)
 		assert.NotEqual(t, nil, err)
-		assert.Equal(t, true, isActionError(err))
-
-		reply = &ActionResult{}
-		err = c.Call(rpcName+".StartGroup", "bar", reply)
-		assert.NotEqual(t, nil, err)
-		assert.Equal(t, true, isActionError(err))
 	})
 
 	assert.Equal(t, nil, err)
