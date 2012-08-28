@@ -5,7 +5,7 @@ processes:
     actions:
       alert:
         - memory_over_20
-        - proc_over_03
+        - proc_over_30
       restart:
         - memory_over_5
     groups: vcap
@@ -43,6 +43,6 @@ events:
     rule: memory_used > 20mb
     interval: 1s
     duration: 1s
-  proc_over_03:
-    description: The proc percent is over 0.3.
-    rule: cpu_percent > 0.3
+  proc_over_30:
+    description: The proc percent is over 30.
+    rule: cpu_percent > 30
