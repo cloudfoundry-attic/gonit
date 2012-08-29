@@ -193,6 +193,7 @@ func mkcmd(args []string, action string) []string {
 }
 
 func NewTestProcess(name string, flags []string, detached bool) *Process {
+	detached = true // XXX remove when detaching works properly
 	// using '/tmp' rather than os.TempDir, otherwise 'sudo -E go test'
 	// will fail on darwin, since only the user that started the process
 	// has rx perms

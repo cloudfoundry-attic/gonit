@@ -96,8 +96,13 @@ func TestSimple(t *testing.T) {
 	assert.Equal(t, true, process.IsRunning())
 
 	info := processInfo(process)
+
+	if process.Detached {
+		assert.Equal(t, true, grandArgs(info.Args))
+	} else {
+		assert.Equal(t, pid, info.Pid)
+	}
 	assertProcessInfo(t, process, info)
-	assert.Equal(t, pid, info.Pid)
 
 	err = process.StopProcess()
 	assert.Equal(t, nil, err)
@@ -266,8 +271,11 @@ func TestFailExe(t *testing.T) {
 	}
 
 	_, err = process.StartProcess()
-	assert.Equal(t, syscall.EPERM, err)
-
+	if process.Detached {
+		assert.NotEqual(t, nil, err)
+	} else {
+		assert.Equal(t, syscall.EPERM, err)
+	}
 	pause()
 
 	assert.Equal(t, false, process.IsRunning())
