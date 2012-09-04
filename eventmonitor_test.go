@@ -15,6 +15,13 @@ func init() {
 	eventMonitor = EventMonitor{}
 }
 
+func RegisterNewFakeControl() *FakeControl {
+	fc := &FakeControl{}
+	eventMonitor.registerControl(fc)
+	return fc
+}
+
+
 func TestIsAnOperatorChar(t *testing.T) {
 	assert.Equal(t, true, isAnOperatorChar("="))
 	assert.Equal(t, true, isAnOperatorChar(">"))
@@ -132,7 +139,7 @@ func TestParseEvent(t *testing.T) {
 		Description: "The best rule ever!",
 	}
 	parsedEvent, err :=
-		eventMonitor.parseEvent(&event, "GroupName", "ProcessName")
+		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "alert")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,16 +161,94 @@ func TestParseBadIntervalEvents(t *testing.T) {
 		Interval:    "10s",
 		Description: "The best rule ever!",
 	}
-	_, err := eventMonitor.parseEvent(&event1, "GroupName", "ProcessName")
+	_, err := eventMonitor.parseEvent(&event1, "GroupName", "ProcessName",
+		"alert")
 	if err != nil {
 		assert.Equal(t,
 			"Rule 'memory_used>2gb' duration / interval must be an integer.",
 			err.Error())
 	}
-	_, err = eventMonitor.parseEvent(&event2, "GroupName", "ProcessName")
+	_, err = eventMonitor.parseEvent(&event2, "GroupName", "ProcessName", "alert")
 	if err != nil {
 		assert.Equal(t,
 			"Rule 'cpu_percent>60' duration / interval must be greater than 1.  It "+
 				"is '10 / 10'.", err.Error())
 	}
 }
+
+type FakeControl struct {
+	numDoActionCalled int
+	lastActionCalled  int
+}
+
+func (fc *FakeControl) DoAction(name string, action int) error {
+	fc.numDoActionCalled++
+	fc.lastActionCalled = action
+	return nil
+}
+
+func TestActionTriggers(t *testing.T) {
+	fc := RegisterNewFakeControl()
+	eventMonitor.configManager = &ConfigManager{}
+	eventMonitor.configManager.Settings = &Settings{}
+	event := Event{
+		Rule:        "memory_used>2mb",
+		Duration:    "10s",
+		Interval:    "10s",
+		Description: "The best rule ever!",
+	}
+	parsedEvent, _ :=
+		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "stop")
+	err := eventMonitor.triggerAction(parsedEvent, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, fc.numDoActionCalled)
+	assert.Equal(t, ACTION_STOP, fc.lastActionCalled)
+
+	parsedEvent, _ =
+		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "start")
+	err = eventMonitor.triggerAction(parsedEvent, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 2, fc.numDoActionCalled)
+	assert.Equal(t, ACTION_START, fc.lastActionCalled)
+
+	parsedEvent, _ =
+		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "restart")
+	err = eventMonitor.triggerAction(parsedEvent, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 3, fc.numDoActionCalled)
+	assert.Equal(t, ACTION_RESTART, fc.lastActionCalled)
+
+	parsedEvent, _ =
+		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "alert")
+	err = eventMonitor.triggerAction(parsedEvent, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 3, fc.numDoActionCalled)
+
+	_, err =
+		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "doesntexist")
+	assert.Equal(t, "No event action 'doesntexist' exists. Valid actions are "+
+		"[stop, start, restart, alert].", err.Error())
+	parsedEvent.action = "doesntexist"
+	err = eventMonitor.triggerAction(parsedEvent, 0)
+	assert.Equal(t, "No event action 'doesntexist' exists.", err.Error())
+
+	eventMonitor = EventMonitor{}
+}
+
+func TestStartStopIsMonitoring(t *testing.T) {
+	proc := &Process{monitorEvents: true}
+	assert.Equal(t, true, eventMonitor.IsMonitoring(proc))
+	eventMonitor.StopMonitoringProcess(proc)
+	assert.Equal(t, false, eventMonitor.IsMonitoring(proc))
+	eventMonitor.StartMonitoringProcess(proc)
+	assert.Equal(t, true, eventMonitor.IsMonitoring(proc))
+}
+
