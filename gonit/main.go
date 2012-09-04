@@ -56,11 +56,10 @@ func main() {
 	}
 
 	api = gonit.NewAPI(configManager)
-
 	args := flag.Args()
 	if len(args) == 0 {
 		if polltime != 0 {
-			runDaemon()
+			runDaemon(api.Control, configManager)
 		} else {
 			log.Fatal("Nothing todo (yet)")
 		}
@@ -237,7 +236,7 @@ func isRunning() bool {
 	return err == nil && syscall.Kill(pid, 0) == nil
 }
 
-func runDaemon() {
+func runDaemon(control *gonit.Control, configManager *gonit.ConfigManager) {
 	if isRunning() {
 		log.Fatalf("%s daemon is already running", name)
 	}
@@ -252,9 +251,19 @@ func runDaemon() {
 		log.Fatal(err)
 	}
 	defer os.Remove(pidfile)
-
+	createEventMonitor(control, configManager)
 	start()
 	loop()
+}
+
+func createEventMonitor(control *gonit.Control,
+	configManager *gonit.ConfigManager) {
+	eventMonitor := &gonit.EventMonitor{}
+	err := eventMonitor.Start(configManager, control)
+	if err != nil {
+		log.Fatal(err)
+	}
+	control.RegisterEventMonitor(eventMonitor)
 }
 
 func showVersion() {
