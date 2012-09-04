@@ -63,15 +63,16 @@ type Process struct {
 	Description string
 	DependsOn   []string
 	Actions     map[string][]string
-	// TODO How do we make it so Monitor is true by default and only false when
-	// explicitly set in yaml?
-	Monitor bool
+	MonitorMode string
 }
 
 const (
 	CONFIG_FILE_POSTFIX   = "-gonit.yml"
 	SETTINGS_FILENAME     = "gonit.yml"
 	UNIX_SOCKET_TRANSPORT = "unix_socket"
+	MONITOR_MODE_ACTIVE   = "active"
+	MONITOR_MODE_PASSIVE  = "passive"
+	MONITOR_MODE_MANUAL   = "manual"
 )
 
 const (
@@ -216,10 +217,25 @@ func (c *ConfigManager) Parse(paths ...string) error {
 		log.Printf("No settings found, using defaults.")
 	}
 	c.applyDefaultSettings()
+	c.applyDefaultConfigOpts()
 	if err := c.validate(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (c *ConfigManager) applyDefaultMonitorMode() {
+	for _, pg := range c.ProcessGroups {
+		for _, process := range pg.Processes {
+			if process.MonitorMode == "" {
+				process.MonitorMode = MONITOR_MODE_ACTIVE
+			}
+		}
+	}
+}
+
+func (c *ConfigManager) applyDefaultConfigOpts() {
+	c.applyDefaultMonitorMode()
 }
 
 // Validates that certain fields exist in the config file.
@@ -281,4 +297,16 @@ func (c *ConfigManager) validate() error {
 		return err
 	}
 	return nil
+}
+
+func (p *Process) IsMonitoringModeActive() bool {
+	return p.MonitorMode == MONITOR_MODE_ACTIVE
+}
+
+func (p *Process) IsMonitoringModePassive() bool {
+	return p.MonitorMode == MONITOR_MODE_PASSIVE
+}
+
+func (p *Process) IsMonitoringModeManual() bool {
+	return p.MonitorMode == MONITOR_MODE_MANUAL
 }
