@@ -132,7 +132,7 @@ func TestParseEvent(t *testing.T) {
 		Description: "The best rule ever!",
 	}
 	parsedEvent, err :=
-		eventMonitor.parseEvent(&event, "GroupName", "ProcessName")
+		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "alert")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,13 +154,14 @@ func TestParseBadIntervalEvents(t *testing.T) {
 		Interval:    "10s",
 		Description: "The best rule ever!",
 	}
-	_, err := eventMonitor.parseEvent(&event1, "GroupName", "ProcessName")
+	_, err := eventMonitor.parseEvent(&event1, "GroupName", "ProcessName",
+		"alert")
 	if err != nil {
 		assert.Equal(t,
 			"Rule 'memory_used>2gb' duration / interval must be an integer.",
 			err.Error())
 	}
-	_, err = eventMonitor.parseEvent(&event2, "GroupName", "ProcessName")
+	_, err = eventMonitor.parseEvent(&event2, "GroupName", "ProcessName", "alert")
 	if err != nil {
 		assert.Equal(t,
 			"Rule 'cpu_percent>60' duration / interval must be greater than 1.  It "+

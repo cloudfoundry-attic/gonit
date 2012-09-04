@@ -11,7 +11,7 @@ import (
 var notimpl = errors.New("Method not implemented")
 
 type API struct {
-	control *Control
+	Control *Control
 }
 
 type ProcessSummary struct {
@@ -64,7 +64,7 @@ func (e *ActionError) Error() string {
 
 func NewAPI(config *ConfigManager) *API {
 	return &API{
-		control: &Control{configManager: config},
+		Control: &Control{configManager: config},
 	}
 }
 
@@ -83,23 +83,23 @@ func (c *Control) callAction(name string, r *ActionResult, action int) error {
 }
 
 func (a *API) StartProcess(name string, r *ActionResult) error {
-	return a.control.callAction(name, r, ACTION_START)
+	return a.Control.callAction(name, r, ACTION_START)
 }
 
 func (a *API) StopProcess(name string, r *ActionResult) error {
-	return a.control.callAction(name, r, ACTION_STOP)
+	return a.Control.callAction(name, r, ACTION_STOP)
 }
 
 func (a *API) RestartProcess(name string, r *ActionResult) error {
-	return a.control.callAction(name, r, ACTION_RESTART)
+	return a.Control.callAction(name, r, ACTION_RESTART)
 }
 
 func (a *API) MonitorProcess(name string, r *ActionResult) error {
-	return a.control.callAction(name, r, ACTION_MONITOR)
+	return a.Control.callAction(name, r, ACTION_MONITOR)
 }
 
 func (a *API) UnmonitorProcess(name string, r *ActionResult) error {
-	return a.control.callAction(name, r, ACTION_UNMONITOR)
+	return a.Control.callAction(name, r, ACTION_UNMONITOR)
 }
 
 func (c *Control) processSummary(process *Process, summary *ProcessSummary) {
@@ -129,13 +129,13 @@ func (c *Control) processStatus(process *Process, status *ProcessStatus) error {
 }
 
 func (a *API) StatusProcess(name string, r *ProcessStatus) error {
-	process, err := a.control.Config().FindProcess(name)
+	process, err := a.Control.Config().FindProcess(name)
 
 	if err != nil {
 		return err
 	}
 
-	return a.control.processStatus(process, r)
+	return a.Control.processStatus(process, r)
 }
 
 // *Group methods apply to a service group
@@ -155,23 +155,23 @@ func (c *Control) groupAction(name string, r *ActionResult, action int) error {
 }
 
 func (a *API) StartGroup(name string, r *ActionResult) error {
-	return a.control.groupAction(name, r, ACTION_START)
+	return a.Control.groupAction(name, r, ACTION_START)
 }
 
 func (a *API) StopGroup(name string, r *ActionResult) error {
-	return a.control.groupAction(name, r, ACTION_STOP)
+	return a.Control.groupAction(name, r, ACTION_STOP)
 }
 
 func (a *API) RestartGroup(name string, r *ActionResult) error {
-	return a.control.groupAction(name, r, ACTION_RESTART)
+	return a.Control.groupAction(name, r, ACTION_RESTART)
 }
 
 func (a *API) MonitorGroup(name string, r *ActionResult) error {
-	return a.control.groupAction(name, r, ACTION_MONITOR)
+	return a.Control.groupAction(name, r, ACTION_MONITOR)
 }
 
 func (a *API) UnmonitorGroup(name string, r *ActionResult) error {
-	return a.control.groupAction(name, r, ACTION_UNMONITOR)
+	return a.Control.groupAction(name, r, ACTION_UNMONITOR)
 }
 
 func (c *Control) groupStatus(group *ProcessGroup,
@@ -187,14 +187,14 @@ func (c *Control) groupStatus(group *ProcessGroup,
 }
 
 func (a *API) StatusGroup(name string, r *ProcessGroupStatus) error {
-	group, err := a.control.Config().FindGroup(name)
+	group, err := a.Control.Config().FindGroup(name)
 
 	if err != nil {
 		return err
 	}
 
 	r.Name = name
-	a.control.groupStatus(group, r)
+	a.Control.groupStatus(group, r)
 
 	return nil
 }
@@ -211,40 +211,40 @@ func (c *Control) allAction(r *ActionResult, action int) error {
 }
 
 func (a *API) StartAll(unused interface{}, r *ActionResult) error {
-	return a.control.allAction(r, ACTION_START)
+	return a.Control.allAction(r, ACTION_START)
 }
 
 func (a *API) StopAll(unused interface{}, r *ActionResult) error {
-	return a.control.allAction(r, ACTION_STOP)
+	return a.Control.allAction(r, ACTION_STOP)
 }
 
 func (a *API) RestartAll(unused interface{}, r *ActionResult) error {
-	return a.control.allAction(r, ACTION_RESTART)
+	return a.Control.allAction(r, ACTION_RESTART)
 }
 
 func (a *API) MonitorAll(unused interface{}, r *ActionResult) error {
-	return a.control.allAction(r, ACTION_MONITOR)
+	return a.Control.allAction(r, ACTION_MONITOR)
 }
 
 func (a *API) UnmonitorAll(unused interface{}, r *ActionResult) error {
-	return a.control.allAction(r, ACTION_UNMONITOR)
+	return a.Control.allAction(r, ACTION_UNMONITOR)
 }
 
 func (a *API) StatusAll(name string, r *ProcessGroupStatus) error {
 	r.Name = name
 
-	for _, processGroup := range a.control.Config().ProcessGroups {
-		a.control.groupStatus(processGroup, r)
+	for _, processGroup := range a.Control.Config().ProcessGroups {
+		a.Control.groupStatus(processGroup, r)
 	}
 
 	return nil
 }
 
 func (a *API) Summary(unused interface{}, s *Summary) error {
-	for _, group := range a.control.Config().ProcessGroups {
+	for _, group := range a.Control.Config().ProcessGroups {
 		for _, process := range group.Processes {
 			summary := ProcessSummary{}
-			a.control.processSummary(process, &summary)
+			a.Control.processSummary(process, &summary)
 			s.Processes = append(s.Processes, summary)
 		}
 	}

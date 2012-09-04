@@ -56,10 +56,15 @@ func main() {
 	}
 
 	api = gonit.NewAPI(configManager)
-
 	args := flag.Args()
 	if len(args) == 0 {
 		if polltime != 0 {
+			eventMonitor := &gonit.EventMonitor{}
+			err := eventMonitor.Start(configManager, api)
+			if err != nil {
+				log.Fatal(err)
+			}
+			api.Control.RegisterEventMonitor(eventMonitor)
 			runDaemon()
 		} else {
 			log.Fatal("Nothing todo (yet)")

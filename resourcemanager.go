@@ -42,6 +42,9 @@ func (s *SigarGetter) getProcTime(pid int) (uint64, error) {
 type ResourceManager struct {
 	resourceHolders []*ResourceHolder
 	sigarInterface  SigarInterface
+	// Used by eventmonitor to cache resources so they don't get pulled multiple
+	// times when multiple rules are being checked for the same resource.
+	cachedResources map[string]uint64
 }
 
 type ResourceHolder struct {
@@ -54,6 +57,7 @@ type ResourceHolder struct {
 
 var resourceManager ResourceManager = ResourceManager{
 	sigarInterface: &SigarGetter{},
+	cachedResources: map[string]uint64{},
 }
 
 type DataTimestamp struct {
@@ -79,6 +83,17 @@ var validResourceNames = map[string]bool{
 // Cleans data from ResourceManager.
 func (r *ResourceManager) CleanData() {
 	r.resourceHolders = []*ResourceHolder{}
+	r.ClearCachedResources()
+}
+
+func (r *ResourceManager) CleanDataForProcess(p *Process) {
+	for _, resourceHolder := range r.resourceHolders {
+		if resourceHolder.processName == p.Name {
+			resourceHolder.dataTimestamps = []*DataTimestamp{}
+			resourceHolder.firstEntryIndex = 0
+		}
+	}
+	r.ClearCachedResources()
 }
 
 // Get the nth entry in the data.  Accepts a negaitve number, as well, so that
@@ -140,7 +155,25 @@ func (r *ResourceManager) getResourceHolder(
 	}
 
 	resourceHolder.maxDataToStore = int64(math.Ceil(duration / interval))
+	r.resourceHolders = append(r.resourceHolders, resourceHolder)
 	return resourceHolder
+}
+
+// Sets an entry in the resources cache.
+func (r *ResourceManager) setCachedResource(resourceName string, value uint64) {
+	r.cachedResources[resourceName] = value
+}
+
+// Gets an entry in the resources cache.
+func (r *ResourceManager) getCachedResource(
+	resourceName string) (uint64, bool) {
+	value, has_key := r.cachedResources[resourceName]
+	return value, has_key
+}
+
+// Clears the resources cache.
+func (r *ResourceManager) ClearCachedResources() {
+	r.cachedResources = map[string]uint64{}
 }
 
 // Given a ParsedEvent, will populate the correct resourceHolder with the
@@ -151,7 +184,6 @@ func (r *ResourceManager) gatherResource(parsedEvent *ParsedEvent,
 	if err := r.gather(pid, resourceHolder); err != nil {
 		return err
 	}
-	r.resourceHolders = append(r.resourceHolders, resourceHolder)
 	return nil
 }
 
@@ -232,9 +264,16 @@ func (r *ResourceManager) GetResource(parsedEvent *ParsedEvent,
 	pid int) (uint64, error) {
 	resourceName := parsedEvent.resourceName
 	processName := parsedEvent.processName
+
+	data, has_key := r.getCachedResource(resourceName)
+	if has_key {
+		return data, nil
+	}
+
 	if err := r.gatherResource(parsedEvent, pid); err != nil {
 		return 0, err
 	}
+
 	for _, resourceHolder := range r.resourceHolders {
 		lenResourceData := len(resourceHolder.dataTimestamps)
 		if resourceHolder.processName == processName &&
@@ -243,6 +282,7 @@ func (r *ResourceManager) GetResource(parsedEvent *ParsedEvent,
 			if err != nil {
 				return 0, err
 			}
+			r.setCachedResource(resourceName, data)
 			return data, nil
 		}
 	}

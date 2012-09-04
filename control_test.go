@@ -12,8 +12,14 @@ import (
 
 var groupName = "controlTest"
 
+type FakeEventMonitor struct {}
+
+func (fem *FakeEventMonitor) StopMonitoringProcess(process *Process) {}
+
+func (fem *FakeEventMonitor) StartMonitoringProcess(process *Process) {}
+
 func TestActions(t *testing.T) {
-	c := &Control{}
+	c := &Control{EventMonitor: &FakeEventMonitor{}}
 
 	name := "simple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -50,7 +56,7 @@ func TestActions(t *testing.T) {
 }
 
 func TestDepends(t *testing.T) {
-	c := &Control{}
+		c := &Control{EventMonitor: &FakeEventMonitor{}}
 
 	name := "depsimple"
 	process := helper.NewTestProcess(name, nil, false)

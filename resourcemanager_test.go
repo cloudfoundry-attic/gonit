@@ -27,7 +27,10 @@ func (s *FakeSigarGetter) getProcTime(pid int) (uint64, error) {
 var r ResourceManager
 
 func Setup() {
-	r = ResourceManager{sigarInterface: &SigarGetter{}}
+	r = ResourceManager{
+		sigarInterface: &SigarGetter{},
+		cachedResources: map[string]uint64{},
+	}
 }
 
 func TestCalculateProcPercent(t *testing.T) {
@@ -93,6 +96,7 @@ func TestGatherProcPercent(t *testing.T) {
 	timeThen := r.resourceHolders[0].dataTimestamps[0].nanoTimestamp
 	// Set the time to be 1 second ago.
 	r.resourceHolders[0].dataTimestamps[0].nanoTimestamp = timeThen - 1000000000
+	r.ClearCachedResources()
 	resourceVal, err = r.GetResource(pe, 1234)
 	if err != nil {
 		t.Fatal(err)
@@ -155,6 +159,7 @@ func TestCircularProcData(t *testing.T) {
 			procUsed: uint64(2886 + i),
 		}
 		r.SetSigarInterface(fsg)
+		r.ClearCachedResources()
 		_, err := r.GetResource(pe, 1234)
 		if err != nil {
 			t.Fatal(err)
@@ -172,6 +177,7 @@ func TestCircularProcData(t *testing.T) {
 		procUsed: uint64(2897),
 	}
 	r.SetSigarInterface(fsg)
+	r.ClearCachedResources()
 	_, err := r.GetResource(pe, 1234)
 	if err != nil {
 		t.Fatal(err)
@@ -195,6 +201,7 @@ func TestDuration(t *testing.T) {
 			procUsed: uint64(2886 + i),
 		}
 		r.SetSigarInterface(fsg)
+		r.ClearCachedResources()
 		_, err := r.GetResource(pe, 1234)
 		if err != nil {
 			t.Fatal(err)
@@ -210,6 +217,7 @@ func TestDuration(t *testing.T) {
 		procUsed: uint64(4000),
 	}
 	r.SetSigarInterface(fsg)
+	r.ClearCachedResources()
 	resourceVal, err := r.GetResource(pe, 1234)
 	if err != nil {
 		t.Fatal(err)

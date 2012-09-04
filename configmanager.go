@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // TODO:
@@ -48,24 +49,23 @@ type Action struct {
 }
 
 type Process struct {
-	Name        string
-	Pidfile     string
-	Start       string
-	Stop        string
-	Restart     string
-	Gid         string
-	Uid         string
-	Stdout      string
-	Stderr      string
-	Env         []string
-	Dir         string
-	Detached    bool
-	Description string
-	DependsOn   []string
-	Actions     map[string][]string
-	// TODO How do we make it so Monitor is true by default and only false when
-	// explicitly set in yaml?
-	Monitor bool
+	Name              string
+	Pidfile           string
+	Start             string
+	Stop              string
+	Restart           string
+	Gid               string
+	Uid               string
+	Stdout            string
+	Stderr            string
+	Env               []string
+	Dir               string
+	Detached          bool
+	Description       string
+	DependsOn         []string
+	Actions           map[string][]string
+	MonitorEvents     bool
+	monitorEventsLock sync.Mutex
 }
 
 const (

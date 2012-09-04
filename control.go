@@ -28,8 +28,15 @@ const (
 	processStarted
 )
 
+// So we can mock it in tests.
+type EventMonitorInterface interface {
+	StopMonitoringProcess(process *Process)
+	StartMonitoringProcess(process *Process)
+}
+
 type Control struct {
 	configManager *ConfigManager
+	EventMonitor  EventMonitorInterface
 	visits        map[string]*visitor
 	states        map[string]*processState
 }
@@ -69,6 +76,8 @@ func (c *ConfigManager) AddProcess(groupName string, process *Process) error {
 	return nil
 }
 
+// BUG(lisbakke): If there are two processes named the same thing in different
+// process groups, this could return the wrong process.
 // XXX TODO should probably be in configmanager.go
 // Helper methods to find a Process by name
 func (c *ConfigManager) FindProcess(name string) (*Process, error) {
@@ -137,6 +146,10 @@ func (c *Control) State(process *Process) *processState {
 	return c.states[process.Name]
 }
 
+func (c *Control) RegisterEventMonitor(eventMonitor *EventMonitor) {
+	c.EventMonitor = eventMonitor
+}
+
 // Invoke given action for the given process and its
 // dependents and/or dependencies
 func (c *Control) DoAction(name string, action int) error {
@@ -148,6 +161,7 @@ func (c *Control) DoAction(name string, action int) error {
 		return err
 	}
 
+	// TODO(lisbakke): This won't cover the depends.
 	switch action {
 	case ACTION_START:
 		if process.IsRunning() {
@@ -155,19 +169,19 @@ func (c *Control) DoAction(name string, action int) error {
 			c.monitorSet(process)
 			return nil
 		}
-		c.doDepend(process, ACTION_STOP, false)
+		c.doDepend(process, ACTION_STOP)
 		c.doStart(process)
-		c.doDepend(process, ACTION_START, false)
+		c.doDepend(process, ACTION_START)
 
 	case ACTION_STOP:
-		c.doDepend(process, ACTION_STOP, true)
-		c.doStop(process, true)
+		c.doDepend(process, ACTION_STOP)
+		c.doStop(process)
 
 	case ACTION_RESTART:
-		c.doDepend(process, ACTION_STOP, false)
-		if c.doStop(process, false) {
+		c.doDepend(process, ACTION_STOP)
+		if c.doStop(process) {
 			c.doStart(process)
-			c.doDepend(process, ACTION_START, false)
+			c.doDepend(process, ACTION_START)
 		} else {
 			c.monitorSet(process)
 		}
@@ -176,7 +190,7 @@ func (c *Control) DoAction(name string, action int) error {
 		c.doMonitor(process)
 
 	case ACTION_UNMONITOR:
-		c.doDepend(process, ACTION_UNMONITOR, false)
+		c.doDepend(process, ACTION_UNMONITOR)
 		c.doUnmonitor(process)
 
 	default:
@@ -217,7 +231,7 @@ func (c *Control) doStart(process *Process) {
 // Stop the given Process.
 // Monitoring is disabled when unmonitor flag is true.
 // Waits for process to stop or until Process.Timeout is reached.
-func (c *Control) doStop(process *Process, unmonitor bool) bool {
+func (c *Control) doStop(process *Process) bool {
 	visitor := c.visitorOf(process)
 	var rv = true
 	if visitor.stopped {
@@ -232,9 +246,7 @@ func (c *Control) doStop(process *Process, unmonitor bool) bool {
 		}
 	}
 
-	if unmonitor {
-		c.monitorUnset(process)
-	}
+	c.monitorUnset(process)
 
 	return rv
 }
@@ -268,7 +280,7 @@ func (c *Control) doUnmonitor(process *Process) {
 }
 
 // Apply actions to processes that depend on the given Process
-func (c *Control) doDepend(process *Process, action int, unmonitor bool) {
+func (c *Control) doDepend(process *Process, action int) {
 	c.configManager.VisitProcesses(func(child *Process) bool {
 		for _, dep := range child.DependsOn {
 			if dep == process.Name {
@@ -279,11 +291,11 @@ func (c *Control) doDepend(process *Process, action int, unmonitor bool) {
 					c.doMonitor(child)
 				}
 
-				c.doDepend(child, action, unmonitor)
+				c.doDepend(child, action)
 
 				switch action {
 				case ACTION_STOP:
-					c.doStop(child, unmonitor)
+					c.doStop(child)
 				case ACTION_UNMONITOR:
 					c.doUnmonitor(child)
 				}
@@ -299,6 +311,7 @@ func (c *Control) monitorSet(process *Process) {
 
 	if state.Monitor == MONITOR_NOT {
 		state.Monitor = MONITOR_INIT
+		c.EventMonitor.StartMonitoringProcess(process)
 		log.Printf("%q monitoring enabled", process.Name)
 	}
 }
@@ -308,6 +321,7 @@ func (c *Control) monitorUnset(process *Process) {
 
 	if state.Monitor != MONITOR_NOT {
 		state.Monitor = MONITOR_NOT
+		c.EventMonitor.StopMonitoringProcess(process)
 		log.Printf("%q monitoring disabled", process.Name)
 	}
 }
