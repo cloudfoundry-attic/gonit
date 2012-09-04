@@ -12,8 +12,17 @@ import (
 
 var groupName = "controlTest"
 
+type FakeEventMonitor struct {
+	numStartMonitoringCalled int
+}
+
+func (fem *FakeEventMonitor) StartMonitoringProcess(process *Process) {
+	fem.numStartMonitoringCalled++
+}
+
 func TestActions(t *testing.T) {
-	c := &Control{}
+	fem := &FakeEventMonitor{}
+	c := &Control{EventMonitor: fem}
 
 	name := "simple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -26,6 +35,7 @@ func TestActions(t *testing.T) {
 	assert.Equal(t, 0, c.State(process).Starts)
 
 	rv := c.DoAction(name, ACTION_START)
+	assert.Equal(t, 1, fem.numStartMonitoringCalled)
 	assert.Equal(t, nil, rv)
 
 	assert.Equal(t, MONITOR_INIT, c.State(process).Monitor)
@@ -34,6 +44,7 @@ func TestActions(t *testing.T) {
 	assert.Equal(t, true, process.IsRunning())
 
 	rv = c.DoAction(name, ACTION_RESTART)
+	assert.Equal(t, 2, fem.numStartMonitoringCalled)
 	assert.Equal(t, nil, rv)
 
 	assert.Equal(t, 2, c.State(process).Starts)
@@ -44,13 +55,14 @@ func TestActions(t *testing.T) {
 	assert.Equal(t, MONITOR_NOT, c.State(process).Monitor)
 
 	rv = c.DoAction(name, ACTION_MONITOR)
+	assert.Equal(t, 3, fem.numStartMonitoringCalled)
 	assert.Equal(t, nil, rv)
 
 	assert.Equal(t, MONITOR_INIT, c.State(process).Monitor)
 }
 
 func TestDepends(t *testing.T) {
-	c := &Control{}
+	c := &Control{EventMonitor: &FakeEventMonitor{}}
 
 	name := "depsimple"
 	process := helper.NewTestProcess(name, nil, false)
