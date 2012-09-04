@@ -13,7 +13,6 @@ processes:
     start: /var/vcap/jobs/opentsdb/bin/opentsdb_ctl start
     stop: /var/vcap/jobs/opentsdb/bin/opentsdb_ctl stop
     user: vcap
-    monitor: true
   dashboard:
     description: The cloud foundry dashboard.
     actions:
@@ -26,7 +25,6 @@ processes:
     stop: /var/vcap/jobs/dashboard/bin/dashboard_ctl stop
     gid: vcap
     user: vcap
-    monitor: true
 events:
   memory_over_5:
     description: The memory for a process is too high.
