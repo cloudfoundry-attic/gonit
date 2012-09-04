@@ -19,13 +19,14 @@ import (
 )
 
 var (
-	fork    = flag.Bool("F", false, "Fork me")
-	grand   = flag.Bool("G", false, "Behave as grandchild process")
-	dir     = flag.String("d", os.TempDir(), "test directory")
-	name    = flag.String("n", "test", "process name")
-	pidfile = flag.String("p", "test.pid", "process pid file")
-	sleep   = flag.String("s", "10s", "sleep duration")
-	exit    = flag.Int("x", 0, "exit code")
+	fork       = flag.Bool("F", false, "Fork me")
+	grand      = flag.Bool("G", false, "Behave as grandchild process")
+	memballoon = flag.Bool("MB", false, "balloon memory used")
+	dir        = flag.String("d", os.TempDir(), "test directory")
+	name       = flag.String("n", "test", "process name")
+	pidfile    = flag.String("p", "test.pid", "process pid file")
+	sleep      = flag.String("s", "10s", "sleep duration")
+	exit       = flag.Int("x", 0, "exit code")
 )
 
 var restarts = 0
@@ -90,6 +91,15 @@ func forkme() {
 	os.Exit(0)
 }
 
+func balloon() {
+	dess := make([][]float64, 300)
+	for i := 0; i < 300; i++ {
+		fmt.Fprintf(os.Stdout, "Ballooning %v\n", i)
+		dess[i] = make([]float64, 900000)
+		time.Sleep(time.Duration(100) * time.Millisecond)
+	}
+}
+
 func main() {
 	flag.Parse()
 	log.SetFlags(log.Ltime | log.Lshortfile)
@@ -112,7 +122,11 @@ func main() {
 
 		saveProcessInfo()
 		fmt.Fprintf(os.Stdout, "Started. [sleep(%s)]\n", *sleep)
-		time.Sleep(pause)
+		if *memballoon {
+			balloon()
+		} else {
+			time.Sleep(pause)
+		}
 
 		fmt.Fprintf(os.Stdout, "Stopped. [exit(%d)]\n", *exit)
 		os.Exit(*exit)

@@ -5,6 +5,7 @@ package gonit
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -28,8 +29,14 @@ const (
 	processStarted
 )
 
+// So we can mock it in tests.
+type EventMonitorInterface interface {
+	StartMonitoringProcess(process *Process)
+}
+
 type Control struct {
 	configManager *ConfigManager
+	EventMonitor  EventMonitorInterface
 	visits        map[string]*visitor
 	states        map[string]*processState
 }
@@ -43,8 +50,9 @@ type visitor struct {
 
 // XXX TODO should state be attached to Process type?
 type processState struct {
-	Monitor int
-	Starts  int
+	Monitor     int
+	MonitorLock sync.Mutex
+	Starts      int
 }
 
 // XXX TODO needed for tests, a form of this should probably be in ConfigManager
@@ -69,6 +77,49 @@ func (c *ConfigManager) AddProcess(groupName string, process *Process) error {
 	return nil
 }
 
+func (c *Control) ApplyConfigOptions() {
+	for _, pg := range c.configManager.ProcessGroups {
+		for _, process := range pg.Processes {
+			switch process.MonitorMode {
+			case "active":
+				c.MonitorModeSetActive(process)
+			case "passive":
+				c.MonitorModeSetPassive(process)
+			case "manual":
+				c.MonitorModeSetManual(process)
+			}
+		}
+	}
+}
+
+func (c *Control) MonitorModeSetActive(process *Process) {
+	process.MonitorModeLock.Lock()
+	defer process.MonitorModeLock.Unlock()
+	if process.MonitorMode != MONITOR_MODE_ACTIVE {
+		log.Printf("%q set monitor mode to active", process.Name)
+		process.MonitorMode = MONITOR_MODE_ACTIVE
+	}
+}
+
+func (c *Control) MonitorModeSetPassive(process *Process) {
+	process.MonitorModeLock.Lock()
+	defer process.MonitorModeLock.Unlock()
+	if process.MonitorMode != MONITOR_MODE_PASSIVE {
+		log.Printf("%q set monitor mode to passive", process.Name)
+		process.MonitorMode = MONITOR_MODE_PASSIVE
+	}
+}
+
+func (c *Control) MonitorModeSetManual(process *Process) {
+	process.MonitorModeLock.Lock()
+	defer process.MonitorModeLock.Unlock()
+	if process.MonitorMode != MONITOR_MODE_MANUAL {
+		log.Printf("%q set monitor mode to manual", process.Name)
+		process.MonitorMode = MONITOR_MODE_MANUAL
+	}
+}
+
+// BUG(lisbakke): If there are two processes named the same thing in different process groups, this could return the wrong process. ConfigManager should enforce unique group/process names.
 // XXX TODO should probably be in configmanager.go
 // Helper methods to find a Process by name
 func (c *ConfigManager) FindProcess(name string) (*Process, error) {
@@ -137,6 +188,12 @@ func (c *Control) State(process *Process) *processState {
 	return c.states[process.Name]
 }
 
+// Registers the event monitor with Control so that it can turn event monitoring
+// on/off when processes are started/stopped.
+func (c *Control) RegisterEventMonitor(eventMonitor *EventMonitor) {
+	c.EventMonitor = eventMonitor
+}
+
 // Invoke given action for the given process and its
 // dependents and/or dependencies
 func (c *Control) DoAction(name string, action int) error {
@@ -155,19 +212,19 @@ func (c *Control) DoAction(name string, action int) error {
 			c.monitorSet(process)
 			return nil
 		}
-		c.doDepend(process, ACTION_STOP, false)
+		c.doDepend(process, ACTION_STOP)
 		c.doStart(process)
-		c.doDepend(process, ACTION_START, false)
+		c.doDepend(process, ACTION_START)
 
 	case ACTION_STOP:
-		c.doDepend(process, ACTION_STOP, true)
-		c.doStop(process, true)
+		c.doDepend(process, ACTION_STOP)
+		c.doStop(process)
 
 	case ACTION_RESTART:
-		c.doDepend(process, ACTION_STOP, false)
-		if c.doStop(process, false) {
+		c.doDepend(process, ACTION_STOP)
+		if c.doStop(process) {
 			c.doStart(process)
-			c.doDepend(process, ACTION_START, false)
+			c.doDepend(process, ACTION_START)
 		} else {
 			c.monitorSet(process)
 		}
@@ -176,7 +233,7 @@ func (c *Control) DoAction(name string, action int) error {
 		c.doMonitor(process)
 
 	case ACTION_UNMONITOR:
-		c.doDepend(process, ACTION_UNMONITOR, false)
+		c.doDepend(process, ACTION_UNMONITOR)
 		c.doUnmonitor(process)
 
 	default:
@@ -217,7 +274,7 @@ func (c *Control) doStart(process *Process) {
 // Stop the given Process.
 // Monitoring is disabled when unmonitor flag is true.
 // Waits for process to stop or until Process.Timeout is reached.
-func (c *Control) doStop(process *Process, unmonitor bool) bool {
+func (c *Control) doStop(process *Process) bool {
 	visitor := c.visitorOf(process)
 	var rv = true
 	if visitor.stopped {
@@ -232,9 +289,7 @@ func (c *Control) doStop(process *Process, unmonitor bool) bool {
 		}
 	}
 
-	if unmonitor {
-		c.monitorUnset(process)
-	}
+	c.monitorUnset(process)
 
 	return rv
 }
@@ -268,7 +323,7 @@ func (c *Control) doUnmonitor(process *Process) {
 }
 
 // Apply actions to processes that depend on the given Process
-func (c *Control) doDepend(process *Process, action int, unmonitor bool) {
+func (c *Control) doDepend(process *Process, action int) {
 	c.configManager.VisitProcesses(func(child *Process) bool {
 		for _, dep := range child.DependsOn {
 			if dep == process.Name {
@@ -279,11 +334,11 @@ func (c *Control) doDepend(process *Process, action int, unmonitor bool) {
 					c.doMonitor(child)
 				}
 
-				c.doDepend(child, action, unmonitor)
+				c.doDepend(child, action)
 
 				switch action {
 				case ACTION_STOP:
-					c.doStop(child, unmonitor)
+					c.doStop(child)
 				case ACTION_UNMONITOR:
 					c.doUnmonitor(child)
 				}
@@ -296,20 +351,49 @@ func (c *Control) doDepend(process *Process, action int, unmonitor bool) {
 
 func (c *Control) monitorSet(process *Process) {
 	state := c.State(process)
-
+	state.MonitorLock.Lock()
+	defer state.MonitorLock.Unlock()
 	if state.Monitor == MONITOR_NOT {
 		state.Monitor = MONITOR_INIT
+		c.EventMonitor.StartMonitoringProcess(process)
 		log.Printf("%q monitoring enabled", process.Name)
 	}
 }
 
 func (c *Control) monitorUnset(process *Process) {
 	state := c.State(process)
-
+	state.MonitorLock.Lock()
+	defer state.MonitorLock.Unlock()
 	if state.Monitor != MONITOR_NOT {
 		state.Monitor = MONITOR_NOT
 		log.Printf("%q monitoring disabled", process.Name)
 	}
+}
+
+// TODO(lisbakke): Mutex on state.
+func (c *Control) IsMonitoring(process *Process) bool {
+	state := c.State(process)
+	state.MonitorLock.Lock()
+	defer state.MonitorLock.Unlock()
+	return state.Monitor == MONITOR_INIT || state.Monitor == MONITOR_YES
+}
+
+func (c *Control) IsMonitoringModeActive(process *Process) bool {
+	process.MonitorModeLock.Lock()
+	defer process.MonitorModeLock.Unlock()
+	return process.MonitorMode == MONITOR_MODE_ACTIVE
+}
+
+func (c *Control) IsMonitoringModePassive(process *Process) bool {
+	process.MonitorModeLock.Lock()
+	defer process.MonitorModeLock.Unlock()
+	return process.MonitorMode == MONITOR_MODE_PASSIVE
+}
+
+func (c *Control) IsMonitoringModeManual(process *Process) bool {
+	process.MonitorModeLock.Lock()
+	defer process.MonitorModeLock.Unlock()
+	return process.MonitorMode == MONITOR_MODE_MANUAL
 }
 
 // Poll process for expected state change

@@ -8,15 +8,17 @@ import (
 	"log"
 	"math"
 	"net"
+	"strings"
 	"time"
 )
 
 // TODO:
-// - Support more actions than alert.
 // - Maybe consider changing the way rule checking works so that it timestamps
 //       the last time each rule was checked instead of the way it is?
 // - Debug messages?
 // - Support more than just unix socket for alerts.
+// - Move the parsing/validation logic from here to configmanager, since that's
+//   a better fit.
 
 // After configmanager gets the rules to be monitored, eventmonitor parses the
 // rules and stores their data as ParsedEvent.
@@ -30,6 +32,7 @@ type ParsedEvent struct {
 	processName  string
 	description  string
 	interval     time.Duration
+	action       string
 }
 
 // The JSON message that is sent in alerts.
@@ -48,12 +51,24 @@ const (
 	DEFAULT_INTERVAL = "2s"
 )
 
+var validActions = []string{"stop", "start", "restart", "alert"}
+
 const (
 	EQ_OPERATOR  = 0x1
 	NEQ_OPERATOR = 0x2
 	GT_OPERATOR  = 0x3
 	LT_OPERATOR  = 0x4
 )
+
+// Returns whether or not the actionName is a valid action.
+func isValidAction(actionName string) bool {
+	for _, action := range validActions {
+		if actionName == action {
+			return true
+		}
+	}
+	return false
+}
 
 // Returns whether a character is an operator character in an event rule.
 func isAnOperatorChar(operatorChar string) bool {
@@ -89,25 +104,42 @@ func checkRule(parsedEvent *ParsedEvent, resourceVal uint64) bool {
 // resource values from resourcemanager.  If any events trigger, it will take
 // appropriate action.
 type EventMonitor struct {
-	alertEvents     []*ParsedEvent
+	events          []*ParsedEvent
 	resourceManager ResourceManager
 	configManager   *ConfigManager
+	control         ControlInterface
 	startTime       int64
 	quitChan        chan bool
 }
 
+type ControlInterface interface {
+	DoAction(name string, action int) error
+	IsMonitoring(process *Process) bool
+	IsMonitoringModeActive(process *Process) bool
+	IsMonitoringModePassive(process *Process) bool
+	IsMonitoringModeManual(process *Process) bool
+}
+
+// Simple helper to make testing easier.
+func (e *EventMonitor) registerControl(control ControlInterface) {
+	e.control = control
+}
+
 // Initializes the eventmonitor by parsing event rules and initializing data
 // structures.  The configmanager is where the events come from.
-func (e *EventMonitor) setup(configManager *ConfigManager) error {
+func (e *EventMonitor) setup(configManager *ConfigManager,
+	control *Control) error {
 	e.resourceManager = resourceManager
 	e.configManager = configManager
-	e.alertEvents = []*ParsedEvent{}
+	e.registerControl(control)
+	e.events = []*ParsedEvent{}
 	for _, group := range e.configManager.ProcessGroups {
 		for _, process := range group.Processes {
 			for actionName, actions := range process.Actions {
 				for _, eventName := range actions {
 					event := group.EventByName(eventName)
-					if err := e.loadEvent(event, group.Name, process); err != nil {
+					if err := e.loadEvent(event, group.Name, process,
+						actionName); err != nil {
 						return fmt.Errorf("Did not load rule '%v' on action '%v' because "+
 							"of error: '%v'.", eventName, actionName, err.Error())
 					}
@@ -120,13 +152,55 @@ func (e *EventMonitor) setup(configManager *ConfigManager) error {
 	return nil
 }
 
+func (e *EventMonitor) printTriggeredMessage(event *ParsedEvent,
+	resourceVal uint64) {
+	log.Printf("'%v' triggered '%v' for '%v' (at '%v'). Executing '%v'.\n",
+		event.processName, event.ruleString, event.duration, resourceVal,
+		event.action)
+}
+
+func (e *EventMonitor) triggerAction(process *Process, event *ParsedEvent,
+	resourceVal uint64) error {
+	switch event.action {
+	case "stop":
+		if e.TriggerProcessActions(process) {
+			e.printTriggeredMessage(event, resourceVal)
+			return e.control.DoAction(event.processName, ACTION_STOP)
+		} else {
+			return nil
+		}
+	case "start":
+		if e.TriggerProcessActions(process) {
+			e.printTriggeredMessage(event, resourceVal)
+			return e.control.DoAction(event.processName, ACTION_START)
+		} else {
+			return nil
+		}
+	case "restart":
+		if e.TriggerProcessActions(process) {
+			e.printTriggeredMessage(event, resourceVal)
+			return e.control.DoAction(event.processName, ACTION_RESTART)
+		} else {
+			return nil
+		}
+	case "alert":
+		if e.TriggerAlerts(process) {
+			e.printTriggeredMessage(event, resourceVal)
+			return e.sendAlert(event)
+		} else {
+			return nil
+		}
+	}
+	return fmt.Errorf("No event action '%v' exists.", event.action)
+}
+
 // Given a configmanager config, this function starts the eventmonitor on
 // monitoring events and dispatching them.
-func (e *EventMonitor) Start(configManager *ConfigManager) error {
-	if err := e.setup(configManager); err != nil {
+func (e *EventMonitor) Start(configManager *ConfigManager,
+	control *Control) error {
+	if err := e.setup(configManager, control); err != nil {
 		return err
 	}
-
 	go func() {
 		timeToWait := 1 * time.Second
 		ticker := time.NewTicker(timeToWait)
@@ -140,16 +214,16 @@ func (e *EventMonitor) Start(configManager *ConfigManager) error {
 			case <-ticker.C:
 				for _, group := range e.configManager.ProcessGroups {
 					for _, process := range group.Processes {
-						// TODO change the GetPid to be a go routine that happens every X
-						// seconds with a lock on it so we don't have to keep opening the
-						// file.
-						pid, err := process.Pid()
-						if err != nil {
-							log.Println("Could not get pid file for process '%v'. Error: %+v",
-								process.Name, err)
-						}
-						if process.Monitor != false {
-							e.checkRules(process.Name, pid)
+						if e.IsMonitoring(process) {
+							// TODO change the GetPid to be a go routine that happens every X
+							// seconds with a lock on it so we don't have to keep opening the
+							// file.
+							pid, err := process.Pid()
+							if err != nil {
+								log.Printf("Could not get pid file for process '%v'. Error: "+
+									"%+v\n", process.Name, err)
+							}
+							e.checkRules(process, pid)
 						}
 					}
 				}
@@ -167,50 +241,44 @@ func (e *EventMonitor) Stop() {
 
 // Given a process name and a pid, this will check all the rules associated with
 // it for this time period.
-func (e *EventMonitor) checkRules(processName string, pid int) {
+func (e *EventMonitor) checkRules(process *Process, pid int) {
+	processName := process.Name
 	diffTime := time.Now().Unix() - e.startTime
-	// So we don't check the same thing more than once in a row.
-	cachedResources := map[string]uint64{}
-	for _, alertEvent := range e.alertEvents {
-		interval := int64(alertEvent.interval.Seconds())
-		if alertEvent.processName == processName &&
+	for _, event := range e.events {
+		interval := int64(event.interval.Seconds())
+		if event.processName == processName &&
 			(interval == 0 || diffTime%interval == 0) {
 			var resourceVal uint64
-			// Use cache unless we must pull the resource.
-			resourceVal, has_key := cachedResources[alertEvent.resourceName]
-			if !has_key {
-				var err error
-				resourceVal, err = e.resourceManager.GetResource(alertEvent, pid)
-				if err != nil {
-					log.Print(err)
-					continue
-				}
-				cachedResources[alertEvent.resourceName] = resourceVal
+			var err error
+			resourceVal, err = e.resourceManager.GetResource(event, pid)
+			if err != nil {
+				log.Print(err)
+				continue
 			}
-			ruleTriggered := checkRule(alertEvent, resourceVal)
+			ruleTriggered := checkRule(event, resourceVal)
 			if ruleTriggered {
 				// TODO right now this can block the monitoring loop.
-				if err := e.sendAlert(alertEvent); err != nil {
+				if err := e.triggerAction(process, event, resourceVal); err != nil {
 					log.Print(err)
 				}
 			}
 		}
 	}
+	e.resourceManager.ClearCachedResources()
 }
 
 // Given Events from ConfigManager, parses them and adds them to internal data
 // so they can be monitored.
 func (e *EventMonitor) loadEvent(event *Event, groupName string,
-	process *Process) error {
-	parsedEvent, err := e.parseEvent(event, groupName, process.Name)
+	process *Process, actionName string) error {
+	parsedEvent, err := e.parseEvent(event, groupName, process.Name, actionName)
 	if err != nil {
 		return err
 	}
-
 	if err = e.validateInterval(parsedEvent); err != nil {
 		return err
 	}
-	e.alertEvents = append(e.alertEvents, parsedEvent)
+	e.events = append(e.events, parsedEvent)
 	return nil
 }
 
@@ -282,7 +350,7 @@ func (e *EventMonitor) parseRule(rule string) (uint64, int, string, error) {
 // Given an Event, parses the rule into amount, operator and resourceName, does
 // a few other things, then returns a ParsedEvent ready to be monitored.
 func (e *EventMonitor) parseEvent(event *Event, groupName string,
-	processName string) (*ParsedEvent, error) {
+	processName string, actionName string) (*ParsedEvent, error) {
 	rule := event.Rule
 	ruleAmount, operator, resourceName, err := e.parseRule(rule)
 	if err != nil {
@@ -307,7 +375,13 @@ func (e *EventMonitor) parseEvent(event *Event, groupName string,
 		return nil, err
 	}
 
+	if !isValidAction(actionName) {
+		return nil, fmt.Errorf("No event action '%v' exists. Valid actions "+
+			"are [%+v].", actionName, strings.Join(validActions, ", "))
+	}
+
 	parsedEvent := &ParsedEvent{
+		action:       actionName,
 		operator:     operator,
 		ruleAmount:   ruleAmount,
 		resourceName: resourceName,
@@ -321,22 +395,20 @@ func (e *EventMonitor) parseEvent(event *Event, groupName string,
 	return parsedEvent, nil
 }
 
-// Sends an alerts.
+// Sends an alert.
 func (e *EventMonitor) sendAlert(parsedEvent *ParsedEvent) error {
 	settings := e.configManager.Settings
 	if settings.AlertTransport == UNIX_SOCKET_TRANSPORT {
-		if err := e.sendUnixSocketAlert(parsedEvent, settings.SocketFile); err != nil {
+		if err := e.sendUnixSocketAlert(parsedEvent,
+			settings.SocketFile); err != nil {
 			return err
 		}
-	} else {
-		log.Printf("Rule '%v' for process '%v' has triggered for > %v seconds.\n",
-			parsedEvent.ruleString, parsedEvent.processName, parsedEvent.duration)
 	}
 	return nil
 }
 
 func (e *EventMonitor) validateInterval(parsedEvent *ParsedEvent) error {
-	for _, event := range e.alertEvents {
+	for _, event := range e.events {
 		if event.processName == parsedEvent.processName &&
 			event.resourceName == parsedEvent.resourceName {
 			if event.interval != parsedEvent.interval {
@@ -344,19 +416,20 @@ func (e *EventMonitor) validateInterval(parsedEvent *ParsedEvent) error {
 					"poll intervals for the same resource '%v'.", event.ruleString,
 					parsedEvent.ruleString, event.processName, event.resourceName)
 			}
-			durationRatio := event.duration.Seconds() / event.interval.Seconds()
-			if event.resourceName == CPU_PERCENT_NAME &&
-				(event.duration.Seconds()/event.interval.Seconds()) <= 1 {
-				return fmt.Errorf("Rule '%v' duration / interval must be greater "+
-					"than 1.  It is '%+v / %+v'.", event.ruleString,
-					event.duration.Seconds(), event.interval.Seconds())
-			}
-
-			if math.Mod(durationRatio, 1.0) != 0.0 {
-				return fmt.Errorf("Rule '%v' duration / interval must be an integer.",
-					event.ruleString)
-			}
 		}
+	}
+	durationRatio := parsedEvent.duration.Seconds() /
+		parsedEvent.interval.Seconds()
+	if parsedEvent.resourceName == CPU_PERCENT_NAME &&
+		(parsedEvent.duration.Seconds()/parsedEvent.interval.Seconds()) <= 1 {
+		return fmt.Errorf("Rule '%v' duration / interval must be greater "+
+			"than 1.  It is '%+v / %+v'.", parsedEvent.ruleString,
+			parsedEvent.duration.Seconds(), parsedEvent.interval.Seconds())
+	}
+
+	if math.Mod(durationRatio, 1.0) != 0.0 {
+		return fmt.Errorf("Rule '%v' duration / interval must be an integer.",
+			parsedEvent.ruleString)
 	}
 	return nil
 }
@@ -387,4 +460,25 @@ func (e *EventMonitor) sendUnixSocketAlert(parsedEvent *ParsedEvent,
 		return err
 	}
 	return nil
+}
+
+func (e *EventMonitor) CleanDataForProcess(p *Process) {
+	e.resourceManager.CleanDataForProcess(p)
+}
+
+func (e *EventMonitor) IsMonitoring(p *Process) bool {
+	return e.control.IsMonitoring(p) && !e.control.IsMonitoringModeManual(p)
+}
+
+func (e *EventMonitor) StartMonitoringProcess(p *Process) {
+	e.CleanDataForProcess(p)
+}
+
+func (e *EventMonitor) TriggerAlerts(p *Process) bool {
+	return e.control.IsMonitoringModeActive(p) ||
+		e.control.IsMonitoringModePassive(p)
+}
+
+func (e *EventMonitor) TriggerProcessActions(p *Process) bool {
+	return e.control.IsMonitoringModeActive(p)
 }
