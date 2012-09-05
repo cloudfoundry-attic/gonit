@@ -150,6 +150,7 @@ func (c *ConfigManager) parseDir(dirPath string) error {
 	if err != nil {
 		return err
 	}
+	defer dir.Close()
 
 	dirNames, err := dir.Readdirnames(-1)
 	if err != nil {
