@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -33,11 +32,13 @@ func processInfo(p *Process) *helper.ProcessInfo {
 func assertProcessInfo(t *testing.T, process *Process, info *helper.ProcessInfo) {
 	selfInfo := helper.CurrentProcessInfo()
 
-	assert.Equal(t, 1, info.Ppid) // parent pid is init (1)
+	assert.Equal(t, selfInfo.Pid, info.Ppid) // parent pid
 
 	assert.NotEqual(t, selfInfo.Pgrp, info.Pgrp) // process group will change
 
 	assert.NotEqual(t, selfInfo.Sid, info.Sid) // session id will change
+
+	assert.Equal(t, false, info.HasTty) // no controling terminal
 
 	sort.Strings(selfInfo.Env)
 	sort.Strings(info.Env)
@@ -271,11 +272,8 @@ func TestFailExe(t *testing.T) {
 	}
 
 	_, err = process.StartProcess()
-	if process.Detached {
-		assert.NotEqual(t, nil, err)
-	} else {
-		assert.Equal(t, syscall.EPERM, err)
-	}
+	assert.NotEqual(t, nil, err)
+
 	pause()
 
 	assert.Equal(t, false, process.IsRunning())
