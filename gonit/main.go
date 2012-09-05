@@ -85,6 +85,42 @@ func parseFlags() {
 	flag.StringVar(&rpcUrl, "s", defaultRpcUrl, "RPC server URL")
 	flag.DurationVar(&polltime, "d", 0, "Run as a daemon with duration")
 
+	const named = "the named process or group"
+	const all = "all processes"
+
+	actions := []struct {
+		usage       string
+		description string
+		what        string
+	}{
+		{"start all", "Start", all},
+		{"start name", "Only start", named},
+		{"stop all", "Stop", all},
+		{"stop name", "Only stop", named},
+		{"restart all", "Restart", all},
+		{"restart name", "Only restart", named},
+		{"monitor all", "Enable monitoring for", all},
+		{"monitor name", "Only enable monitoring of", named},
+		{"unmonitor all", "Disable monitoring for", all},
+		{"unmonitor name", "Only disable monitoring of", named},
+		{"status all", "Print full status info for", all},
+		{"status name", "Only print short status info for", named},
+		{"summary", "Print short status information for", all},
+	}
+
+	flag.Usage = func() {
+		fmt.Println("Usage:", name, "[options] {arguments}")
+
+		fmt.Println("Options are as follows:")
+		flag.PrintDefaults()
+
+		fmt.Println("Optional action arguments are as follows:")
+		for _, action := range actions {
+			fmt.Printf("  %-20s - %s %s\n", action.usage,
+				action.description, action.what)
+		}
+	}
+
 	flag.Parse()
 }
 
