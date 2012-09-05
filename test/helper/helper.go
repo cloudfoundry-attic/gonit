@@ -32,15 +32,22 @@ type ProcessInfo struct {
 	Args     []string
 	Env      []string
 	Restarts int
+	HasTty   bool
 }
 
 var TestProcess, goprocess string
 
 func CurrentProcessInfo() *ProcessInfo {
+	var hasTty bool
 	cwd, _ := os.Getwd()
 	grp, _ := os.Getgroups()
 	// no syscall.Getsid() wrapper on Linux?
 	sid, _, _ := syscall.RawSyscall(syscall.SYS_GETSID, 0, 0, 0)
+
+	if fh, err := os.Open("/dev/tty"); err == nil {
+		hasTty = true
+		fh.Close()
+	}
 
 	return &ProcessInfo{
 		Ppid:   os.Getppid(),
@@ -55,6 +62,7 @@ func CurrentProcessInfo() *ProcessInfo {
 		Groups: grp,
 		Args:   os.Args,
 		Env:    os.Environ(),
+		HasTty: hasTty,
 	}
 }
 
@@ -193,7 +201,6 @@ func mkcmd(args []string, action string) []string {
 }
 
 func NewTestProcess(name string, flags []string, detached bool) *Process {
-	detached = true // XXX remove when detaching works properly
 	// using '/tmp' rather than os.TempDir, otherwise 'sudo -E go test'
 	// will fail on darwin, since only the user that started the process
 	// has rx perms

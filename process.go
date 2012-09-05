@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -109,80 +108,21 @@ func (p *Process) Spawn(program string) (*exec.Cmd, error) {
 // manage its own Pidfile.
 // Otherwise; we will detach the process and manage its Pidfile.
 func (p *Process) StartProcess() (int, error) {
+	cmd, err := p.Spawn(p.Start)
+	if err != nil {
+		return 0, err
+	}
+
+	pid := cmd.Process.Pid
+
 	if p.Detached {
-		cmd, err := p.Spawn(p.Start)
-		if err != nil {
-			return 0, err
-		}
-
 		err = cmd.Wait()
-
-		return cmd.Process.Pid, err
+	} else {
+		err = p.SavePid(pid)
+		go cmd.Wait()
 	}
 
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return 0, err
-	}
-
-	defer pr.Close()
-	defer pw.Close()
-
-	ret, err := fork()
-	if err != nil {
-		return 0, err
-	}
-
-	if ret == 0 { // child
-		pr.Close()
-
-		status := 0
-
-		cmd, err := p.Spawn(p.Start)
-		if err == nil {
-			// write pid to parent
-			err = binary.Write(pw, byteOrder, int32(cmd.Process.Pid))
-
-			cmd.Process.Release()
-		}
-
-		if err != nil {
-			// propagate errno to parent via exit status
-			if perr, ok := err.(*os.PathError); ok {
-				status = int(perr.Err.(syscall.Errno))
-				os.Exit(status)
-			}
-			os.Exit(1)
-		}
-
-		os.Exit(0)
-	} else { // parent
-		pw.Close()
-
-		var status syscall.WaitStatus
-
-		_, err := syscall.Wait4(int(ret), &status, 0, nil)
-
-		if err != nil {
-			return 0, err
-		}
-
-		if status.ExitStatus() != 0 {
-			return -1, syscall.Errno(status.ExitStatus())
-		}
-
-		var pid int32
-		// read pid from child
-		err = binary.Read(pr, byteOrder, &pid)
-
-		if err == nil {
-			err = p.SavePid(int(pid))
-		}
-
-		return int(pid), err
-	}
-
-	panic("not reached") // shutup compiler
+	return pid, err
 }
 
 // Stop a process:
@@ -318,23 +258,6 @@ func (p *Process) lookupCredentials(credential *syscall.Credential) error {
 		return err
 	}
 	return nil
-}
-
-// go does not have a fork() wrapper w/o exec
-func fork() (int, error) {
-	darwin := runtime.GOOS == "darwin"
-
-	ret, ret2, errno := syscall.RawSyscall(syscall.SYS_FORK, 0, 0, 0)
-	if errno != 0 {
-		return 0, errno
-	}
-
-	// see syscall/exec_bsd.go
-	if darwin && ret2 == 1 {
-		ret = 0
-	}
-
-	return int(ret), nil
 }
 
 // until we have user.LookupGroupId: http://codereview.appspot.com/4589049
