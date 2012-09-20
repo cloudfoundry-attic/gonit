@@ -27,6 +27,10 @@ func assertFileParsed(t *testing.T, configManager *ConfigManager) {
 	assert.Equal(t, (*Event)(nil), pg.EventByName("blah"))
 
 	assert.Equal(t, "none", configManager.Settings.AlertTransport)
+	assert.NotEqual(t, "", configManager.Settings.RpcServerUrl)
+	assert.Equal(t, 0, configManager.Settings.PollInterval)
+	assert.NotEqual(t, nil, configManager.Settings.Daemon)
+	assert.Equal(t, "lolnit", configManager.Settings.Daemon.Name)
 }
 
 func TestGetPid(t *testing.T) {
