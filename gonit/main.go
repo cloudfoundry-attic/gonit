@@ -14,7 +14,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 )
 
 var (
@@ -22,21 +21,16 @@ var (
 	config     string
 	pidfile    string
 	rpcUrl     string
-	polltime   time.Duration
+	poll       int
 	group      bool
 	foreground bool
 	version    bool
-
-	// defaults
-	home           = os.Getenv("HOME")
-	name           = filepath.Base(os.Args[0]) // gonit
-	defaultPidFile = filepath.Join(home, "."+name+".pid")
-	defaultRpcUrl  = filepath.Join(home, "."+name+".sock")
 
 	// internal
 	api          *gonit.API
 	rpcServer    *gonit.RpcServer
 	eventMonitor *gonit.EventMonitor
+	settings     *gonit.Settings
 )
 
 func main() {
@@ -54,12 +48,17 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+	} else {
+		configManager.ApplyDefaultSettings()
 	}
+
+	settings = configManager.Settings
+	applySettings()
 
 	api = gonit.NewAPI(configManager)
 	args := flag.Args()
 	if len(args) == 0 {
-		if polltime != 0 {
+		if settings.PollInterval != 0 {
 			runDaemon(api.Control, configManager)
 		} else {
 			log.Fatal("Nothing todo (yet)")
@@ -75,15 +74,26 @@ func main() {
 	}
 }
 
+func applySettings() {
+	if pidfile != "" {
+		settings.Process.Pidfile = pidfile
+	}
+	if rpcUrl != "" {
+		settings.RpcServer = rpcUrl
+	}
+	if poll != 0 {
+		settings.PollInterval = poll
+	}
+}
+
 func parseFlags() {
 	flag.BoolVar(&version, "V", false, "Print version number")
 	flag.BoolVar(&group, "g", false, "Use process group")
 	flag.BoolVar(&foreground, "I", false, "Do not run in background")
 	flag.StringVar(&config, "c", "", "Config path")
-	// XXX should be able to use gonit.yml for the following opts
-	flag.StringVar(&pidfile, "p", defaultPidFile, "Pid file path")
-	flag.StringVar(&rpcUrl, "s", defaultRpcUrl, "RPC server URL")
-	flag.DurationVar(&polltime, "d", 0, "Run as a daemon with duration")
+	flag.StringVar(&pidfile, "p", "", "Pid file path")
+	flag.StringVar(&rpcUrl, "s", "", "RPC server URLq")
+	flag.IntVar(&poll, "d", 0, "Run as a daemon with duration")
 
 	const named = "the named process or group"
 	const all = "all processes"
@@ -109,6 +119,7 @@ func parseFlags() {
 	}
 
 	flag.Usage = func() {
+		name := filepath.Base(os.Args[0]) // gonit
 		fmt.Println("Usage:", name, "[options] {arguments}")
 
 		fmt.Println("Options are as follows:")
@@ -125,7 +136,7 @@ func parseFlags() {
 }
 
 func rpcClient() *rpc.Client {
-	url, err := url.Parse(rpcUrl)
+	url, err := url.Parse(settings.RpcServer)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -153,7 +164,7 @@ func rpcClient() *rpc.Client {
 func runCommand(cmd, arg string) {
 	var client gonit.CliClient
 
-	if isRunning() {
+	if settings.Process.IsRunning() {
 		rpc := rpcClient()
 		defer rpc.Close()
 		client = gonit.NewRemoteClient(rpc, api)
@@ -197,7 +208,7 @@ func shutdown() {
 func start() {
 	var err error
 
-	rpcServer, err = gonit.NewRpcServer(rpcUrl)
+	rpcServer, err = gonit.NewRpcServer(settings.RpcServer)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -231,27 +242,21 @@ func loop() {
 	}
 }
 
-func isRunning() bool {
-	pid, err := gonit.ReadPidFile(pidfile)
-
-	return err == nil && syscall.Kill(pid, 0) == nil
-}
-
 func runDaemon(control *gonit.Control, configManager *gonit.ConfigManager) {
-	if isRunning() {
-		log.Fatalf("%s daemon is already running", name)
+	process := settings.Process
+	if process.IsRunning() {
+		log.Fatalf("%s daemon is already running", process.Name)
 	}
 
 	if !foreground {
 		log.Print("daemonize - not yet supported")
 	}
 
-	log.Printf("Saving %s daemon pid to file=%s", name, pidfile)
-	err := gonit.WritePidFile(os.Getpid(), pidfile)
+	err := process.SavePid(os.Getpid())
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.Remove(pidfile)
+	defer os.Remove(process.Pidfile)
 	createEventMonitor(control, configManager)
 	start()
 	loop()
