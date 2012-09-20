@@ -1,2 +1,5 @@
 ---
 alerttransport: none
+process:
+  name: lolnit
+  pidfile: /tmp/lolnit.pid

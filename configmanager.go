@@ -26,6 +26,9 @@ type ConfigManager struct {
 type Settings struct {
 	AlertTransport string
 	SocketFile     string
+	RpcServer      string
+	PollInterval   int
+	Process        *Process
 }
 
 type ProcessGroup struct {
@@ -166,13 +169,31 @@ func (c *ConfigManager) parseDir(dirPath string) error {
 }
 
 // Applies default global settings if some options haven't been specified.
-func (c *ConfigManager) applyDefaultSettings() {
+func (c *ConfigManager) ApplyDefaultSettings() {
 	if c.Settings == nil {
 		c.Settings = &Settings{}
 	}
 	settings := c.Settings
 	if settings.AlertTransport == "" {
 		settings.AlertTransport = DEFAULT_ALERT_TRANSPORT
+	}
+	if settings.Process == nil {
+		settings.Process = &Process{}
+	}
+	process := settings.Process
+	home := os.Getenv("HOME")
+
+	if process.Name == "" {
+		process.Name = filepath.Base(os.Args[0])
+	}
+	if process.Pidfile == "" {
+		defaultPath := "." + process.Name + ".pid"
+		process.Pidfile = filepath.Join(home, defaultPath)
+	}
+
+	if settings.RpcServer == "" {
+		defaultPath := "." + process.Name + ".sock"
+		settings.RpcServer = filepath.Join(home, defaultPath)
 	}
 }
 
@@ -217,7 +238,7 @@ func (c *ConfigManager) Parse(paths ...string) error {
 	if c.Settings == nil {
 		log.Printf("No settings found, using defaults.")
 	}
-	c.applyDefaultSettings()
+	c.ApplyDefaultSettings()
 	c.applyDefaultConfigOpts()
 	if err := c.validate(); err != nil {
 		return err
