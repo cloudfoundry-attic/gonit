@@ -185,7 +185,8 @@ func (p *Process) IsRunning() bool {
 func ReadPidFile(path string) (int, error) {
 	pid, err := ioutil.ReadFile(path)
 	if err == nil {
-		return strconv.Atoi(string(pid))
+		pidString := strings.TrimSpace(string(pid))
+		return strconv.Atoi(pidString)
 	}
 	return 0, err
 }
