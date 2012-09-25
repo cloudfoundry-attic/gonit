@@ -53,27 +53,17 @@ func TestGetPid(t *testing.T) {
 }
 
 func TestParseDir(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("test/config/")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFileParsed(t, &configManager)
-}
-
-func TestParseFileList(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/dashboard-gonit.yml",
-		"test/config/gonit.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertFileParsed(t, &configManager)
+	assertFileParsed(t, configManager)
 }
 
 func TestNoSettingsLoadsDefaults(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/dashboard-gonit.yml")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("test/config/dashboard-gonit.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,8 +71,8 @@ func TestNoSettingsLoadsDefaults(t *testing.T) {
 }
 
 func TestLoadBadDir(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("Bad/Dir")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("Bad/Dir")
 	assert.NotEqual(t, nil, err)
 	assert.Equal(t, "Error stating path 'Bad/Dir'.\n", err.Error())
 }

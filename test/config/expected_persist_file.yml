@@ -1,0 +1,5 @@
+processstates:
+  MyProcess:
+    monitor: 2
+    monitorlock: {}
+    starts: 2
