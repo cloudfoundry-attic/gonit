@@ -7,6 +7,7 @@ import (
 	"github.com/bmizerany/assert"
 	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
+	"os"
 	"testing"
 )
 
@@ -19,10 +20,17 @@ type FakeEventMonitor struct {
 func (fem *FakeEventMonitor) StartMonitoringProcess(process *Process) {
 	fem.numStartMonitoringCalled++
 }
+func (fem *FakeEventMonitor) Start(configManager *ConfigManager,
+	control *Control) error {
+	return nil
+}
+
+func (fem *FakeEventMonitor) Stop() {}
 
 func TestActions(t *testing.T) {
 	fem := &FakeEventMonitor{}
-	c := &Control{EventMonitor: fem}
+	configManager := &ConfigManager{Settings: &Settings{}}
+	c := &Control{ConfigManager: configManager, EventMonitor: fem}
 
 	name := "simple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -30,7 +38,6 @@ func TestActions(t *testing.T) {
 
 	err := c.Config().AddProcess(groupName, process)
 	assert.Equal(t, nil, err)
-
 	assert.Equal(t, MONITOR_NOT, c.State(process).Monitor)
 	assert.Equal(t, 0, c.State(process).Starts)
 
@@ -62,7 +69,8 @@ func TestActions(t *testing.T) {
 }
 
 func TestDepends(t *testing.T) {
-	c := &Control{EventMonitor: &FakeEventMonitor{}}
+	configManager := &ConfigManager{Settings: &Settings{}}
+	c := &Control{ConfigManager: configManager, EventMonitor: &FakeEventMonitor{}}
 
 	name := "depsimple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -174,4 +182,16 @@ func TestDepends(t *testing.T) {
 		assert.Equal(t, false, p.IsRunning())
 		return true
 	})
+}
+
+func TestLoadPersistState(t *testing.T) {
+	configManager := &ConfigManager{Settings: &Settings{}}
+	testPersistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
+	configManager.Settings.PersistFile = testPersistFile
+	configManager.LoadPersistData()
+	control := &Control{ConfigManager: configManager}
+	process := &Process{Name: "MyProcess"}
+	state := control.State(process)
+	assert.Equal(t, 2, state.Starts)
+	assert.Equal(t, MONITOR_INIT, state.Monitor)
 }

@@ -53,27 +53,17 @@ func TestGetPid(t *testing.T) {
 }
 
 func TestParseDir(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("test/config/")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFileParsed(t, &configManager)
-}
-
-func TestParseFileList(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/dashboard-gonit.yml",
-		"test/config/gonit.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertFileParsed(t, &configManager)
+	assertFileParsed(t, configManager)
 }
 
 func TestNoSettingsLoadsDefaults(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/dashboard-gonit.yml")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("test/config/dashboard-gonit.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,10 +71,10 @@ func TestNoSettingsLoadsDefaults(t *testing.T) {
 }
 
 func TestLoadBadDir(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("Bad/Dir")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("Bad/Dir")
 	assert.NotEqual(t, nil, err)
-	assert.Equal(t, "Error stating path 'Bad/Dir'.\n", err.Error())
+	assert.Equal(t, "Error stating path 'Bad/Dir'.", err.Error())
 }
 
 func TestRequiredFieldsExist(t *testing.T) {
@@ -133,4 +123,52 @@ func TestRequiredFieldsExist(t *testing.T) {
 	event.Rule = "some rule"
 	err = pg.validateRequiredFieldsExist()
 	assert.Equal(t, nil, nil)
+}
+
+func TestValidatePersistErr(t *testing.T) {
+	s := &Settings{PersistFile: "/does/not/exist"}
+	err := s.validatePersistFile()
+	assert.NotEqual(t, nil, err)
+}
+
+func TestValidatePersistGood(t *testing.T) {
+	persistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
+	s := &Settings{PersistFile: persistFile}
+	err := s.validatePersistFile()
+	assert.Equal(t, nil, err)
+}
+
+func TestLoadPersistData(t *testing.T) {
+	configManager := &ConfigManager{Settings: &Settings{}}
+	testPersistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
+	configManager.Settings.PersistFile = testPersistFile
+	configManager.LoadPersistData()
+	assert.NotEqual(t, nil, configManager.PersistData["MyProcess"])
+	assert.Equal(t, 2, configManager.PersistData["MyProcess"].Starts)
+	assert.Equal(t, 2, configManager.PersistData["MyProcess"].Monitor)
+}
+
+func TestPersistData(t *testing.T) {
+	configManager := &ConfigManager{Settings: &Settings{}}
+	testPersistFile := os.Getenv("PWD") + "/test/config/test_persist_file.yml"
+	defer os.Remove(testPersistFile)
+	process := &Process{}
+	processes := map[string]*Process{}
+	processes["MyProcess"] = process
+	pgs := map[string]*ProcessGroup{}
+	pgs["somegroup"] = &ProcessGroup{Processes: processes}
+	configManager.ProcessGroups = pgs
+	configManager.Settings.PersistFile = testPersistFile
+	configManager.LoadPersistData()
+	assert.Equal(t, map[string]ProcessState{}, configManager.PersistData)
+	processState := &ProcessState{Monitor: 0x2, Starts: 3}
+	states := map[string]*ProcessState{}
+	states["MyProcess"] = processState
+	err := configManager.PersistStates(states)
+	assert.Equal(t, nil, err)
+	err = configManager.LoadPersistData()
+	assert.Equal(t, nil, err)
+	assert.NotEqual(t, nil, configManager.PersistData["MyProcess"])
+	assert.Equal(t, 3, configManager.PersistData["MyProcess"].Starts)
+	assert.Equal(t, 2, configManager.PersistData["MyProcess"].Monitor)
 }
