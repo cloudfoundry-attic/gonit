@@ -1,0 +1,73 @@
+processgroups:
+  dashboard:
+    name: dashboard
+    events:
+      memory_over_20:
+        name: memory_over_20
+        description: The memory for a process is too high.
+        rule: memory_used > 20mb
+        duration: 1s
+        interval: 1s
+      proc_over_30:
+        name: proc_over_30
+        description: The proc percent is over 30.
+        rule: cpu_percent > 30
+        duration: ""
+        interval: ""
+      memory_over_5:
+        name: memory_over_5
+        description: The memory for a process is too high.
+        rule: memory_used > 5mb
+        duration: 1s
+        interval: 1s
+      memory_over_10:
+        name: memory_over_10
+        description: The memory for a process is too high.
+        rule: memory_used > 10mb
+        duration: 1s
+        interval: 1s
+    processes:
+      opentsdb:
+        name: opentsdb
+        pidfile: /Users/lisbakke/Documents/work/gonit-exp/alerts/dashboard.pid
+        start: /var/vcap/jobs/opentsdb/bin/opentsdb_ctl start
+        stop: /var/vcap/jobs/opentsdb/bin/opentsdb_ctl stop
+        restart: ""
+        gid: ""
+        uid: ""
+        stdout: ""
+        stderr: ""
+        env: []
+        dir: ""
+        detached: false
+        description: Open source time series database
+        dependson: []
+        actions:
+          alert:
+          - memory_over_20
+          - proc_over_30
+          restart:
+          - memory_over_5
+        monitormode: active
+      dashboard:
+        name: dashboard
+        pidfile: /Users/lisbakke/Documents/work/gonit-exp/alerts/opentsdb.pid
+        start: /var/vcap/jobs/dashboard/bin/dashboard_ctl start
+        stop: /var/vcap/jobs/dashboard/bin/dashboard_ctl stop
+        restart: ""
+        gid: vcap
+        uid: ""
+        stdout: ""
+        stderr: ""
+        env: []
+        dir: ""
+        detached: false
+        description: The cloud foundry dashboard.
+        dependson: []
+        actions:
+          alert:
+          - memory_over_10
+        monitormode: active
+settings:
+  alerttransport: none
+  socketfile: ""

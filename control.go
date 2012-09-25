@@ -22,6 +22,7 @@ const (
 	ACTION_RESTART
 	ACTION_MONITOR
 	ACTION_UNMONITOR
+	ACTION_LOAD_CONFIG
 )
 
 const (
@@ -32,6 +33,8 @@ const (
 // So we can mock it in tests.
 type EventMonitorInterface interface {
 	StartMonitoringProcess(process *Process)
+	Start(configManager *ConfigManager, control *Control) error
+	Stop()
 }
 
 type Control struct {
