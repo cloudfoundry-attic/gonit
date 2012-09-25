@@ -198,14 +198,15 @@ func (e *EventMonitor) Start(configManager *ConfigManager,
 	if err := e.setup(configManager, control); err != nil {
 		return err
 	}
+	log.Println("Starting new eventmonitor loop.")
 	go func() {
 		timeToWait := 1 * time.Second
 		ticker := time.NewTicker(timeToWait)
-		log.Println("Starting eventmonitor loop.")
+		log.Println("Started new eventmonitor loop.")
 		for {
 			select {
 			case <-e.quitChan:
-				log.Println("Quitting eventmonitor loop.")
+				log.Println("Quit old eventmonitor loop.")
 				ticker.Stop()
 				return
 			case <-ticker.C:
@@ -231,6 +232,7 @@ func (e *EventMonitor) Start(configManager *ConfigManager,
 }
 
 func (e *EventMonitor) Stop() {
+	log.Println("Quitting old eventmonitor loop.")
 	e.quitChan <- true
 	close(e.quitChan)
 	e.resourceManager.CleanData()

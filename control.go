@@ -4,7 +4,10 @@ package gonit
 
 import (
 	"fmt"
+	// "github.com/xushiwei/goyaml"
+	// "io/ioutil"
 	"log"
+	// "os"
 	"sync"
 	"time"
 )
@@ -32,13 +35,15 @@ const (
 // So we can mock it in tests.
 type EventMonitorInterface interface {
 	StartMonitoringProcess(process *Process)
+	Start(configManager *ConfigManager, control *Control) error
+	Stop()
 }
 
 type Control struct {
-	configManager *ConfigManager
+	ConfigManager *ConfigManager
 	EventMonitor  EventMonitorInterface
 	visits        map[string]*visitor
-	states        map[string]*processState
+	states        map[string]*ProcessState
 }
 
 // flags to avoid invoking actions more than once
@@ -49,7 +54,7 @@ type visitor struct {
 }
 
 // XXX TODO should state be attached to Process type?
-type processState struct {
+type ProcessState struct {
 	Monitor     int
 	MonitorLock sync.Mutex
 	Starts      int
@@ -101,16 +106,16 @@ func (c *ConfigManager) FindGroup(name string) (*ProcessGroup, error) {
 
 // configManager accessor (exported for tests)
 func (c *Control) Config() *ConfigManager {
-	if c.configManager == nil {
-		c.configManager = &ConfigManager{}
+	if c.ConfigManager == nil {
+		c.ConfigManager = &ConfigManager{}
 	}
 
-	if c.configManager.ProcessGroups == nil {
+	if c.ConfigManager.ProcessGroups == nil {
 		// XXX TODO NewConfigManager() ?
-		c.configManager.ProcessGroups = make(map[string]*ProcessGroup)
+		c.ConfigManager.ProcessGroups = make(map[string]*ProcessGroup)
 	}
 
-	return c.configManager
+	return c.ConfigManager
 }
 
 // XXX TODO should probably be in configmanager.go
@@ -134,16 +139,22 @@ func (c *Control) visitorOf(process *Process) *visitor {
 	return c.visits[process.Name]
 }
 
-func (c *Control) State(process *Process) *processState {
+func (c *Control) State(process *Process) *ProcessState {
 	if c.states == nil {
-		c.states = make(map[string]*processState)
+		c.states = make(map[string]*ProcessState)
 	}
-
-	if _, exists := c.states[process.Name]; !exists {
-		c.states[process.Name] = &processState{}
+	procName := process.Name
+	if _, exists := c.states[procName]; !exists {
+		persistData := c.ConfigManager.PersistData
+		// If there was a persisted one, load that instead.
+		if state, exists := persistData[procName]; exists {
+			log.Printf("\"%v\" loaded persisted state \"%+v\".", procName, state)
+			c.states[procName] = &state
+		} else {
+			c.states[procName] = &ProcessState{}
+		}
 	}
-
-	return c.states[process.Name]
+	return c.states[procName]
 }
 
 // Registers the event monitor with Control so that it can turn event monitoring
@@ -200,7 +211,9 @@ func (c *Control) DoAction(name string, action int) error {
 		log.Print(err)
 		return err
 	}
-
+	if err := c.ConfigManager.PersistStates(c.states); err != nil {
+		log.Printf("Error persisting state: '%v'.\n", err.Error())
+	}
 	return nil
 }
 
@@ -281,7 +294,7 @@ func (c *Control) doUnmonitor(process *Process) {
 
 // Apply actions to processes that depend on the given Process
 func (c *Control) doDepend(process *Process, action int) {
-	c.configManager.VisitProcesses(func(child *Process) bool {
+	c.ConfigManager.VisitProcesses(func(child *Process) bool {
 		for _, dep := range child.DependsOn {
 			if dep == process.Name {
 				switch action {
