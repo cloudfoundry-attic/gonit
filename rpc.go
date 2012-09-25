@@ -36,6 +36,9 @@ func NewRpcServer(listenURL string) (*RpcServer, error) {
 			listener, err = net.Listen("tcp", url.Host)
 		}
 	case "", "unix":
+		// If the file already exists, we need to remove it otherwise gonit can't
+		// start.
+		os.Remove(url.Path)
 		listener, err = net.Listen("unix", url.Path)
 		cleanup = func() { os.Remove(url.Path) }
 	default:

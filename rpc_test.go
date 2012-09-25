@@ -9,7 +9,6 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
-	"syscall"
 	"testing"
 )
 
@@ -45,19 +44,10 @@ func TestUnixServer(t *testing.T) {
 
 	server, err := NewRpcServer(url)
 
-	// expected when file already exists
-	assert.NotEqual(t, nil, err)
-	assert.Equal(t, syscall.EADDRINUSE, err.(*net.OpError).Err)
-
-	os.Remove(path)
-	fi, err := os.Stat(path) // double check file is gone
-	assert.NotEqual(t, nil, err)
-
-	server, err = NewRpcServer(url)
 	assert.Equal(t, nil, err)
 
 	// check file exists and is a unix socket
-	fi, err = os.Stat(path)
+	fi, err := os.Stat(path)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, os.ModeSocket, fi.Mode()&os.ModeSocket)
 
