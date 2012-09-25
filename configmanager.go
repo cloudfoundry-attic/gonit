@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // TODO:
@@ -21,6 +22,10 @@ import (
 type ConfigManager struct {
 	ProcessGroups map[string]*ProcessGroup
 	Settings      *Settings
+	path          string
+	control       *Control
+	persistLock   sync.Mutex
+	PersistData   map[string]ProcessState
 }
 
 type Settings struct {
@@ -29,6 +34,7 @@ type Settings struct {
 	RpcServerUrl   string
 	PollInterval   int
 	Daemon         *Process
+	PersistPath    string
 }
 
 type ProcessGroup struct {
@@ -82,10 +88,12 @@ const (
 	DEFAULT_ALERT_TRANSPORT = "none"
 )
 
+var DefaultPersistPath = os.Getenv("HOME") + "/.gonit.persist.yml"
+
 // Given an action string name, returns the events associated with it.
 func (pg *ProcessGroup) EventByName(eventName string) *Event {
-	event, has_key := pg.Events[eventName]
-	if has_key {
+	event, hasKey := pg.Events[eventName]
+	if hasKey {
 		return event
 	}
 	return nil
@@ -197,6 +205,23 @@ func (c *ConfigManager) ApplyDefaultSettings() {
 		defaultPath := "." + daemon.Name + ".sock"
 		settings.RpcServerUrl = filepath.Join(daemon.Dir, defaultPath)
 	}
+
+	if settings.PersistPath == "" {
+		settings.PersistPath = DefaultPersistPath
+	}
+}
+
+func (s *Settings) validatePersistPath() error {
+	_, err := os.Stat(s.PersistPath)
+	if err != nil {
+		// The file doesn't exist. See if we can create it.
+		if _, err := os.Create(s.PersistPath); err != nil {
+			return err
+		} else {
+			os.Remove(s.PersistPath)
+		}
+	}
+	return nil
 }
 
 // Parses a file.
@@ -218,31 +243,55 @@ func (c *ConfigManager) parseFile(path string) error {
 }
 
 // Main function to call, parses a path for gonit config file(s).
-func (c *ConfigManager) Parse(paths ...string) error {
-	c.ProcessGroups = map[string]*ProcessGroup{}
-	for _, path := range paths {
-		fileInfo, err := os.Stat(path)
-		if err != nil {
-			return fmt.Errorf("Error stating path '%+v'.\n", path)
-		}
-		if fileInfo.IsDir() {
-			if err = c.parseDir(path); err != nil {
-				return err
-			}
-		} else {
-			if err := c.parseFile(path); err != nil {
-				return err
-			}
-		}
-		c.fillInNames()
+func (c *ConfigManager) LoadConfig(path string) error {
+	c.path = path
+	if path == "" {
+		return fmt.Errorf("No config given.\n")
 	}
 
-	if c.Settings == nil {
+	c.ProcessGroups = map[string]*ProcessGroup{}
+	c.Settings = &Settings{}
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("Error stating path '%+v'.\n", path)
+	}
+	if fileInfo.IsDir() {
+		if err = c.parseDir(path); err != nil {
+			return err
+		}
+	} else {
+		if err := c.parseFile(path); err != nil {
+			return err
+		}
+	}
+	c.fillInNames()
+	if (*c.Settings == Settings{}) {
 		log.Printf("No settings found, using defaults.")
 	}
 	c.ApplyDefaultSettings()
 	c.applyDefaultConfigOpts()
 	if err := c.validate(); err != nil {
+		return err
+	}
+	if err = c.LoadPersistData(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ConfigManager) LoadPersistData() error {
+	c.PersistData = map[string]ProcessState{}
+	persistPath := c.Settings.PersistPath
+	_, err := os.Stat(persistPath)
+	if err != nil {
+		log.Printf("No persisted state found at '%v'.", persistPath)
+		return nil
+	}
+	persistData, err := ioutil.ReadFile(persistPath)
+	if err != nil {
+		return err
+	}
+	if err := goyaml.Unmarshal(persistData, c.PersistData); err != nil {
 		return err
 	}
 	return nil
@@ -256,6 +305,31 @@ func (c *ConfigManager) applyDefaultMonitorMode() {
 			}
 		}
 	}
+}
+
+func (c *ConfigManager) PersistStates(states map[string]*ProcessState) error {
+	c.persistLock.Lock()
+	defer c.persistLock.Unlock()
+	if c.PersistData == nil {
+		c.PersistData = map[string]ProcessState{}
+	}
+	for _, processGroup := range c.ProcessGroups {
+		for name, _ := range processGroup.Processes {
+			if state, hasKey := states[name]; hasKey {
+				c.PersistData[name] = *state
+			}
+		}
+	}
+	yaml, err := goyaml.Marshal(c.PersistData)
+	if err != nil {
+		return err
+	}
+	persistPath := c.Settings.PersistPath
+	if err = ioutil.WriteFile(persistPath, []byte(yaml), 0644); err != nil {
+		return err
+	}
+	log.Printf("Persisted config to '%v'.", persistPath)
+	return nil
 }
 
 func (c *ConfigManager) applyDefaultConfigOpts() {
@@ -300,6 +374,9 @@ func (s *Settings) validate() error {
 	if s.AlertTransport == UNIX_SOCKET_TRANSPORT && s.SocketFile == "" {
 		return fmt.Errorf("Settings uses '%v' alerts transport, but has no socket"+
 			" file.", UNIX_SOCKET_TRANSPORT)
+	}
+	if err := s.validatePersistPath(); err != nil {
+		return err
 	}
 	return nil
 }
