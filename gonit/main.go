@@ -48,18 +48,15 @@ func main() {
 	}
 
 	configManager := &gonit.ConfigManager{}
-
-	if config != "" {
-		err := configManager.Parse(config)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
 	api = gonit.NewAPI(configManager)
 	args := flag.Args()
 	if len(args) == 0 {
 		if polltime != 0 {
+			log.Printf("load from main\n")
+			err := configManager.LoadConfig(config)
+			if err != nil {
+				log.Fatal(err)
+			}
 			runDaemon(api.Control, configManager)
 		} else {
 			log.Fatal("Nothing todo (yet)")
@@ -87,6 +84,7 @@ func parseFlags() {
 
 	const named = "the named process or group"
 	const all = "all processes"
+	const configDir = "configuration directory"
 
 	actions := []struct {
 		usage       string
@@ -106,6 +104,7 @@ func parseFlags() {
 		{"status all", "Print full status info for", all},
 		{"status name", "Only print short status info for", named},
 		{"summary", "Print short status information for", all},
+		{"load config", "Loads a config directory", configDir},
 	}
 
 	flag.Usage = func() {

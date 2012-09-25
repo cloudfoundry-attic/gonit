@@ -66,6 +66,8 @@ type Process struct {
 	MonitorMode string
 }
 
+var persistPath = os.Getenv("HOME") + "/.gonit.persist.yml"
+
 const (
 	CONFIG_FILE_POSTFIX   = "-gonit.yml"
 	SETTINGS_FILENAME     = "gonit.yml"
@@ -113,16 +115,15 @@ func (c *ConfigManager) fillInNames() {
 
 // Parses a config file into a ProcessGroup.
 func (c *ConfigManager) parseConfigFile(path string) (*ProcessGroup, error) {
-	processGroup := &ProcessGroup{}
-	b, err := ioutil.ReadFile(path)
+	yaml, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	if err := goyaml.Unmarshal(b, processGroup); err != nil {
-		return nil, err
+	if pg, err := c.LoadProcessGroupByte(yaml); err == nil {
+		log.Printf("Loaded config file '%+v'\n", path)
+		return pg, nil
 	}
-	log.Printf("Loaded config file '%+v'\n", path)
-	return processGroup, nil
+	return nil, err
 }
 
 // Parses a settings file into a Settings struct.
@@ -194,9 +195,28 @@ func (c *ConfigManager) parseFile(path string) error {
 	return nil
 }
 
+func (c *ConfigManager) LoadProcessGroupByte(
+	yaml []byte) (*ProcessGroup, error) {
+	processGroup := &ProcessGroup{}
+	err := goyaml.Unmarshal(yaml, processGroup)
+	if err == nil {
+		return processGroup, nil
+	}
+	return nil, err
+}
+
+func (c *ConfigManager) LoadSettingsString(yaml string) error {
+	return nil
+}
+
 // Main function to call, parses a path for gonit config file(s).
-func (c *ConfigManager) Parse(paths ...string) error {
+func (c *ConfigManager) LoadConfig(paths ...string) error {
+	if paths[0] == "" {
+		return c.loadPersistentConfig()
+	}
+
 	c.ProcessGroups = map[string]*ProcessGroup{}
+	c.Settings = &Settings{}
 	for _, path := range paths {
 		fileInfo, err := os.Stat(path)
 		if err != nil {
@@ -214,12 +234,16 @@ func (c *ConfigManager) Parse(paths ...string) error {
 		c.fillInNames()
 	}
 
-	if c.Settings == nil {
+	if (*c.Settings == Settings{}) {
 		log.Printf("No settings found, using defaults.")
 	}
 	c.applyDefaultSettings()
 	c.applyDefaultConfigOpts()
 	if err := c.validate(); err != nil {
+		return err
+	}
+
+	if err := c.writePersistFile(); err != nil {
 		return err
 	}
 	return nil
@@ -310,4 +334,52 @@ func (p *Process) IsMonitoringModePassive() bool {
 
 func (p *Process) IsMonitoringModeManual() bool {
 	return p.MonitorMode == MONITOR_MODE_MANUAL
+}
+
+func (c *ConfigManager) loadPersistentConfig() error {
+	log.Printf("Trying to load persist\n")
+	_, err := os.Stat(persistPath)
+	if err != nil {
+		return fmt.Errorf("Persisted config not found at '%v'.\n", persistPath)
+	}
+
+	yaml, err := ioutil.ReadFile(persistPath)
+	if err != nil {
+		return err
+	}
+	tc := ConfigManager{}
+	if err := goyaml.Unmarshal(yaml, &tc); err != nil {
+		return err
+	}
+	log.Printf("No config given, loaded persisted config '%v'.\n", persistPath)
+	*c = tc
+	return nil
+}
+
+func (c *ConfigManager) writePersistFile() error {
+	log.Printf("Persisting config to '%v'.", persistPath)
+	yaml, err := goyaml.Marshal(c)
+	if err != nil {
+		return err
+	}
+	if err = ioutil.WriteFile(persistPath, []byte(yaml), 0644); err != nil {
+		return err
+	}
+
+	return err
+	// 
+	// log.Printf("\n%v\n", string(yaml))
+	// tc := &ConfigManager{}
+	// if err = goyaml.Unmarshal(yaml, tc); err != nil {
+	// 	log.Printf("ERROR: %+v\n", err.Error())
+	// } else {
+	// 	log.Printf("WE're GOOOOOOD \n\n\n")
+	// 	log.Printf("The start is %v\n", tc.ProcessGroups["baz"].Processes["baz_2"].Start)
+	// }
+
+	return nil
+}
+
+func (c *ConfigManager) writeSettingsFile() error {
+	return nil
 }
