@@ -7,6 +7,7 @@ import (
 	"github.com/bmizerany/assert"
 	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
+	"os"
 	"testing"
 )
 
@@ -19,10 +20,17 @@ type FakeEventMonitor struct {
 func (fem *FakeEventMonitor) StartMonitoringProcess(process *Process) {
 	fem.numStartMonitoringCalled++
 }
+func (fem *FakeEventMonitor) Start(configManager *ConfigManager,
+	control *Control) error {
+	return nil
+}
+
+func (fem *FakeEventMonitor) Stop() {}
 
 func TestActions(t *testing.T) {
 	fem := &FakeEventMonitor{}
-	c := &Control{EventMonitor: fem}
+	configManager := &ConfigManager{Settings: &Settings{}}
+	c := &Control{ConfigManager: configManager, EventMonitor: fem}
 
 	name := "simple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -30,7 +38,6 @@ func TestActions(t *testing.T) {
 
 	err := c.Config().AddProcess(groupName, process)
 	assert.Equal(t, nil, err)
-
 	assert.Equal(t, MONITOR_NOT, c.State(process).Monitor)
 	assert.Equal(t, 0, c.State(process).Starts)
 
@@ -62,7 +69,8 @@ func TestActions(t *testing.T) {
 }
 
 func TestDepends(t *testing.T) {
-	c := &Control{EventMonitor: &FakeEventMonitor{}}
+	configManager := &ConfigManager{Settings: &Settings{}}
+	c := &Control{ConfigManager: configManager, EventMonitor: &FakeEventMonitor{}}
 
 	name := "depsimple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -174,4 +182,48 @@ func TestDepends(t *testing.T) {
 		assert.Equal(t, false, p.IsRunning())
 		return true
 	})
+}
+
+func TestLoadPersistState(t *testing.T) {
+	configManager := &ConfigManager{Settings: &Settings{}}
+	control := &Control{ConfigManager: configManager}
+	testPersistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
+	process := &Process{Name: "MyProcess"}
+	processes := map[string]*Process{}
+	processes["MyProcess"] = process
+	pgs := map[string]*ProcessGroup{}
+	pgs["somegroup"] = &ProcessGroup{Processes: processes}
+	configManager.ProcessGroups = pgs
+	configManager.Settings.PersistFile = testPersistFile
+	control.LoadPersistState()
+	assert.NotEqual(t, nil, control.States["MyProcess"])
+	assert.Equal(t, 2, control.States["MyProcess"].Starts)
+	assert.Equal(t, 2, control.States["MyProcess"].Monitor)
+}
+
+func TestPersistData(t *testing.T) {
+	configManager := &ConfigManager{Settings: &Settings{}}
+	control := &Control{ConfigManager: configManager}
+	testPersistFile := os.Getenv("PWD") + "/test/config/test_persist_file.yml"
+	defer os.Remove(testPersistFile)
+	process := &Process{Name: "MyProcess"}
+	processes := map[string]*Process{}
+	processes["MyProcess"] = process
+	pgs := map[string]*ProcessGroup{}
+	pgs["somegroup"] = &ProcessGroup{Processes: processes}
+	configManager.ProcessGroups = pgs
+	configManager.Settings.PersistFile = testPersistFile
+	control.LoadPersistState()
+	var noState map[string]*ProcessState
+	assert.Equal(t, noState, control.States)
+	processState := &ProcessState{Monitor: 0x2, Starts: 3}
+	states := map[string]*ProcessState{}
+	states["MyProcess"] = processState
+	err := control.PersistStates(states)
+	assert.Equal(t, nil, err)
+	err = control.LoadPersistState()
+	assert.Equal(t, nil, err)
+	assert.NotEqual(t, nil, control.States["MyProcess"])
+	assert.Equal(t, 3, control.States["MyProcess"].Starts)
+	assert.Equal(t, 2, control.States["MyProcess"].Monitor)
 }

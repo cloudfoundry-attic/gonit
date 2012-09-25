@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sort"
 	"github.com/cloudfoundry/gosigar"
+	"log"
 )
 
 // until stubs are implemented
@@ -18,7 +19,7 @@ type API struct {
 type ProcessSummary struct {
 	Name         string
 	Running      bool
-	ControlState processState
+	ControlState ProcessState
 }
 
 type ProcessStatus struct {
@@ -89,7 +90,7 @@ func (e *ActionError) Error() string {
 
 func NewAPI(config *ConfigManager) *API {
 	return &API{
-		Control: &Control{configManager: config},
+		Control: &Control{ConfigManager: config},
 	}
 }
 
@@ -287,7 +288,22 @@ func (a *API) About(unused interface{}, about *About) error {
 
 // reload server configuration
 func (a *API) Reload(unused interface{}, r *ActionResult) error {
-	return notimpl
+	log.Printf("Starting config reload.")
+	control := a.Control
+	path := control.ConfigManager.path
+	newConfigManager := ConfigManager{}
+	if err := newConfigManager.LoadConfig(path); err != nil {
+		return err
+	}
+	control.EventMonitor.Stop()
+	// TODO: Do we have a concurrency issue with this?
+	*control.ConfigManager = newConfigManager
+	if err := control.EventMonitor.Start(control.ConfigManager,
+		control); err != nil {
+		return err
+	}
+	log.Printf("Finished config reload.")
+	return nil
 }
 
 // quit server daemon

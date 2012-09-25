@@ -53,27 +53,17 @@ func TestGetPid(t *testing.T) {
 }
 
 func TestParseDir(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("test/config/")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFileParsed(t, &configManager)
-}
-
-func TestParseFileList(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/dashboard-gonit.yml",
-		"test/config/gonit.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertFileParsed(t, &configManager)
+	assertFileParsed(t, configManager)
 }
 
 func TestNoSettingsLoadsDefaults(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("test/config/dashboard-gonit.yml")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("test/config/dashboard-gonit.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,10 +71,10 @@ func TestNoSettingsLoadsDefaults(t *testing.T) {
 }
 
 func TestLoadBadDir(t *testing.T) {
-	configManager := ConfigManager{}
-	err := configManager.Parse("Bad/Dir")
+	configManager := &ConfigManager{}
+	err := configManager.LoadConfig("Bad/Dir")
 	assert.NotEqual(t, nil, err)
-	assert.Equal(t, "Error stating path 'Bad/Dir'.\n", err.Error())
+	assert.Equal(t, "Error stating path 'Bad/Dir'.", err.Error())
 }
 
 func TestRequiredFieldsExist(t *testing.T) {
@@ -133,4 +123,17 @@ func TestRequiredFieldsExist(t *testing.T) {
 	event.Rule = "some rule"
 	err = pg.validateRequiredFieldsExist()
 	assert.Equal(t, nil, nil)
+}
+
+func TestValidatePersistErr(t *testing.T) {
+	s := &Settings{PersistFile: "/does/not/exist"}
+	err := s.validatePersistFile()
+	assert.NotEqual(t, nil, err)
+}
+
+func TestValidatePersistGood(t *testing.T) {
+	persistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
+	s := &Settings{PersistFile: persistFile}
+	err := s.validatePersistFile()
+	assert.Equal(t, nil, err)
 }
