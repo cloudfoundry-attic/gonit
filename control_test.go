@@ -19,6 +19,12 @@ type FakeEventMonitor struct {
 func (fem *FakeEventMonitor) StartMonitoringProcess(process *Process) {
 	fem.numStartMonitoringCalled++
 }
+func (fem *FakeEventMonitor) Start(configManager *ConfigManager,
+	control *Control) error {
+	return nil
+}
+
+func (fem *FakeEventMonitor) Stop() {}
 
 func TestActions(t *testing.T) {
 	fem := &FakeEventMonitor{}

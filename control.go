@@ -4,7 +4,10 @@ package gonit
 
 import (
 	"fmt"
+	"github.com/xushiwei/goyaml"
+	"io/ioutil"
 	"log"
+	"os"
 	"sync"
 	"time"
 )
@@ -24,6 +27,8 @@ const (
 	ACTION_UNMONITOR
 )
 
+var persistPath = os.Getenv("HOME") + "/.gonit.persist.yml"
+
 const (
 	processStopped = iota
 	processStarted
@@ -32,13 +37,16 @@ const (
 // So we can mock it in tests.
 type EventMonitorInterface interface {
 	StartMonitoringProcess(process *Process)
+	Start(configManager *ConfigManager, control *Control) error
+	Stop()
 }
 
 type Control struct {
 	configManager *ConfigManager
 	EventMonitor  EventMonitorInterface
 	visits        map[string]*visitor
-	states        map[string]*processState
+	states        map[string]*ProcessState
+	persistLock   sync.Mutex
 }
 
 // flags to avoid invoking actions more than once
@@ -49,7 +57,7 @@ type visitor struct {
 }
 
 // XXX TODO should state be attached to Process type?
-type processState struct {
+type ProcessState struct {
 	Monitor     int
 	MonitorLock sync.Mutex
 	Starts      int
@@ -134,16 +142,26 @@ func (c *Control) visitorOf(process *Process) *visitor {
 	return c.visits[process.Name]
 }
 
-func (c *Control) State(process *Process) *processState {
+func (c *Control) State(process *Process) *ProcessState {
 	if c.states == nil {
-		c.states = make(map[string]*processState)
+		c.states = make(map[string]*ProcessState)
 	}
-
-	if _, exists := c.states[process.Name]; !exists {
-		c.states[process.Name] = &processState{}
+	procName := process.Name
+	if _, exists := c.states[procName]; !exists {
+		loadedPersist := false
+		// If there was a persisted one, load that instead.
+		if persistedState, err := c.LoadPersistState(); err == nil {
+			if state, exists := persistedState.ProcessStates[procName]; exists {
+				log.Printf("\"%v\" loaded persisted state \"%+v\".", procName, state)
+				c.states[procName] = &state
+				loadedPersist = true
+			}
+		}
+		if !loadedPersist {
+			c.states[procName] = &ProcessState{}
+		}
 	}
-
-	return c.states[process.Name]
+	return c.states[procName]
 }
 
 // Registers the event monitor with Control so that it can turn event monitoring
@@ -222,6 +240,9 @@ func (c *Control) doStart(process *Process) {
 
 	if !process.IsRunning() {
 		c.State(process).Starts++
+		if err := c.PersistState(); err != nil {
+			log.Printf("Error persisting state: '%v'.\n", err.Error())
+		}
 		process.StartProcess()
 		process.waitState(processStarted)
 	}
@@ -312,6 +333,9 @@ func (c *Control) monitorSet(process *Process) {
 	defer state.MonitorLock.Unlock()
 	if state.Monitor == MONITOR_NOT {
 		state.Monitor = MONITOR_INIT
+		if err := c.PersistState(); err != nil {
+			log.Printf("Error persisting state in monitorSet.\n")
+		}
 		c.EventMonitor.StartMonitoringProcess(process)
 		log.Printf("%q monitoring enabled", process.Name)
 	}
@@ -323,6 +347,9 @@ func (c *Control) monitorUnset(process *Process) {
 	defer state.MonitorLock.Unlock()
 	if state.Monitor != MONITOR_NOT {
 		state.Monitor = MONITOR_NOT
+		if err := c.PersistState(); err != nil {
+			log.Printf("Error persisting state in monitorUnset.\n")
+		}
 		log.Printf("%q monitoring disabled", process.Name)
 	}
 }
@@ -383,4 +410,50 @@ func (p *Process) waitState(expect int) int {
 	}
 
 	panic("not reached")
+}
+
+type PersistedState struct {
+	ProcessStates map[string]ProcessState
+}
+
+func (c *Control) PersistState() error {
+	persistedState, err := c.LoadPersistState()
+	c.persistLock.Lock()
+	defer c.persistLock.Unlock()
+	if err != nil {
+		return err
+	}
+	for _, processGroup := range c.configManager.ProcessGroups {
+		for name, process := range processGroup.Processes {
+			persistedState.ProcessStates[name] = *c.State(process)
+		}
+	}
+	yaml, err := goyaml.Marshal(persistedState)
+	if err != nil {
+		return err
+	}
+	if err = ioutil.WriteFile(persistPath, []byte(yaml), 0644); err != nil {
+		return err
+	}
+	log.Printf("Persisted config to '%v'.", persistPath)
+	return nil
+}
+
+func (c *Control) LoadPersistState() (*PersistedState, error) {
+	c.persistLock.Lock()
+	defer c.persistLock.Unlock()
+	persistedState := &PersistedState{ProcessStates: map[string]ProcessState{}}
+	_, err := os.Stat(persistPath)
+	if err != nil {
+		// If we don't have a persisted file, don't worry about it.
+		return persistedState, nil
+	}
+	persistData, err := ioutil.ReadFile(persistPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := goyaml.Unmarshal(persistData, persistedState); err != nil {
+		return nil, err
+	}
+	return persistedState, nil
 }

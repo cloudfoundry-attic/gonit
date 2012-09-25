@@ -50,7 +50,7 @@ func main() {
 	configManager := &gonit.ConfigManager{}
 
 	if config != "" {
-		err := configManager.Parse(config)
+		err := configManager.LoadConfig(config)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -87,6 +87,7 @@ func parseFlags() {
 
 	const named = "the named process or group"
 	const all = "all processes"
+	const configDir = "configuration directory"
 
 	actions := []struct {
 		usage       string
@@ -106,6 +107,8 @@ func parseFlags() {
 		{"status all", "Print full status info for", all},
 		{"status name", "Only print short status info for", named},
 		{"summary", "Print short status information for", all},
+		{"load <config_path>", "Loads a config directory, or the last persisted " +
+			"config if no path is given.", configDir},
 	}
 
 	flag.Usage = func() {

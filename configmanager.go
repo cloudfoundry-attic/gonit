@@ -21,6 +21,7 @@ import (
 type ConfigManager struct {
 	ProcessGroups map[string]*ProcessGroup
 	Settings      *Settings
+	path          string
 }
 
 type Settings struct {
@@ -195,26 +196,30 @@ func (c *ConfigManager) parseFile(path string) error {
 }
 
 // Main function to call, parses a path for gonit config file(s).
-func (c *ConfigManager) Parse(paths ...string) error {
-	c.ProcessGroups = map[string]*ProcessGroup{}
-	for _, path := range paths {
-		fileInfo, err := os.Stat(path)
-		if err != nil {
-			return fmt.Errorf("Error stating path '%+v'.\n", path)
-		}
-		if fileInfo.IsDir() {
-			if err = c.parseDir(path); err != nil {
-				return err
-			}
-		} else {
-			if err := c.parseFile(path); err != nil {
-				return err
-			}
-		}
-		c.fillInNames()
+func (c *ConfigManager) LoadConfig(path string) error {
+	c.path = path
+	if path == "" {
+		return fmt.Errorf("No config given.\n")
 	}
 
-	if c.Settings == nil {
+	c.ProcessGroups = map[string]*ProcessGroup{}
+	c.Settings = &Settings{}
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("Error stating path '%+v'.\n", path)
+	}
+	if fileInfo.IsDir() {
+		if err = c.parseDir(path); err != nil {
+			return err
+		}
+	} else {
+		if err := c.parseFile(path); err != nil {
+			return err
+		}
+	}
+	c.fillInNames()
+
+	if (*c.Settings == Settings{}) {
 		log.Printf("No settings found, using defaults.")
 	}
 	c.applyDefaultSettings()
@@ -222,6 +227,7 @@ func (c *ConfigManager) Parse(paths ...string) error {
 	if err := c.validate(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
