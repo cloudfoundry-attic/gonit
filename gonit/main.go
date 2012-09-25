@@ -50,7 +50,7 @@ func main() {
 	configManager := &gonit.ConfigManager{}
 
 	if config != "" {
-		err := configManager.Parse(config)
+		err := configManager.LoadConfig(config)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -106,6 +106,7 @@ func parseFlags() {
 		{"status all", "Print full status info for", all},
 		{"status name", "Only print short status info for", named},
 		{"summary", "Print short status information for", all},
+		{"reload", "Reload", "config files"},
 	}
 
 	flag.Usage = func() {

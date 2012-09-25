@@ -46,27 +46,27 @@ func (m *MockAPI) About(args interface{}, about *About) error {
 // run tests via RPC or local reflection
 func runTests(t *testing.T, client CliClient) {
 	method, name := RpcArgs("stop", "foo", false)
-	reply, err := client.Call(method, name)
+	_, err := client.Call(method, name)
 	assert.Equal(t, nil, err)
 
 	method, name = RpcArgs("stop", "bar", false)
-	reply, err = client.Call(method, name)
+	_, err = client.Call(method, name)
 	assert.NotEqual(t, nil, err)
 
 	method, name = RpcArgs("unmonitor", "all", false)
-	reply, err = client.Call(method, name)
+	_, err = client.Call(method, name)
 	assert.Equal(t, nil, err)
 
 	method, name = RpcArgs("start", "vcap", true)
-	reply, err = client.Call(method, name)
+	_, err = client.Call(method, name)
 	assert.Equal(t, nil, err)
 
 	method, name = RpcArgs("start", "bar", true)
-	reply, err = client.Call(method, name)
+	_, err = client.Call(method, name)
 	assert.NotEqual(t, nil, err)
 
 	method, name = RpcArgs("about", "", false)
-	reply, err = client.Call(method, name)
+	reply, err := client.Call(method, name)
 	assert.Equal(t, nil, err)
 
 	about, ok := reply.(*About)

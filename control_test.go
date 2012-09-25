@@ -7,6 +7,7 @@ import (
 	"github.com/bmizerany/assert"
 	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
+	"os"
 	"testing"
 )
 
@@ -19,10 +20,22 @@ type FakeEventMonitor struct {
 func (fem *FakeEventMonitor) StartMonitoringProcess(process *Process) {
 	fem.numStartMonitoringCalled++
 }
+func (fem *FakeEventMonitor) Start(configManager *ConfigManager,
+	control *Control) error {
+	return nil
+}
+
+func (fem *FakeEventMonitor) Stop() {}
 
 func TestActions(t *testing.T) {
 	fem := &FakeEventMonitor{}
 	c := &Control{EventMonitor: fem}
+
+	testPersistFile := os.Getenv("PWD") + "/test/config/empty_persist.yml"
+	oldPersist := PersistPath
+	setPersistPath(testPersistFile)
+	defer setPersistPath(oldPersist)
+	defer os.Remove(testPersistFile)
 
 	name := "simple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -30,7 +43,6 @@ func TestActions(t *testing.T) {
 
 	err := c.Config().AddProcess(groupName, process)
 	assert.Equal(t, nil, err)
-
 	assert.Equal(t, MONITOR_NOT, c.State(process).Monitor)
 	assert.Equal(t, 0, c.State(process).Starts)
 
@@ -63,6 +75,12 @@ func TestActions(t *testing.T) {
 
 func TestDepends(t *testing.T) {
 	c := &Control{EventMonitor: &FakeEventMonitor{}}
+
+	testPersistFile := os.Getenv("PWD") + "/test/config/empty_persist.yml"
+	oldPersist := PersistPath
+	setPersistPath(testPersistFile)
+	defer setPersistPath(oldPersist)
+	defer os.Remove(testPersistFile)
 
 	name := "depsimple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -174,4 +192,20 @@ func TestDepends(t *testing.T) {
 		assert.Equal(t, false, p.IsRunning())
 		return true
 	})
+}
+
+func setPersistPath(newPath string) {
+	PersistPath = newPath
+}
+
+func TestLoadPersistState(t *testing.T) {
+	testPersistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
+	oldPersist := PersistPath
+	setPersistPath(testPersistFile)
+	defer setPersistPath(oldPersist)
+	control := &Control{}
+	process := &Process{Name: "MyProcess"}
+	state := control.State(process)
+	assert.Equal(t, 2, state.Starts)
+	assert.Equal(t, MONITOR_INIT, state.Monitor)
 }
