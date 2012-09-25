@@ -4,7 +4,10 @@ package gonit
 
 import (
 	"fmt"
+	"github.com/xushiwei/goyaml"
+	"io/ioutil"
 	"log"
+	"os"
 	"sync"
 	"time"
 )
@@ -32,13 +35,16 @@ const (
 // So we can mock it in tests.
 type EventMonitorInterface interface {
 	StartMonitoringProcess(process *Process)
+	Start(configManager *ConfigManager, control *Control) error
+	Stop()
 }
 
 type Control struct {
-	configManager *ConfigManager
+	ConfigManager *ConfigManager
 	EventMonitor  EventMonitorInterface
 	visits        map[string]*visitor
-	states        map[string]*processState
+	States        map[string]*ProcessState
+	persistLock   sync.Mutex
 }
 
 // flags to avoid invoking actions more than once
@@ -49,7 +55,7 @@ type visitor struct {
 }
 
 // XXX TODO should state be attached to Process type?
-type processState struct {
+type ProcessState struct {
 	Monitor     int
 	MonitorLock sync.Mutex
 	Starts      int
@@ -99,18 +105,18 @@ func (c *ConfigManager) FindGroup(name string) (*ProcessGroup, error) {
 	return nil, fmt.Errorf("process group %q not found", name)
 }
 
-// configManager accessor (exported for tests)
+// ConfigManager accessor (exported for tests)
 func (c *Control) Config() *ConfigManager {
-	if c.configManager == nil {
-		c.configManager = &ConfigManager{}
+	if c.ConfigManager == nil {
+		c.ConfigManager = &ConfigManager{}
 	}
 
-	if c.configManager.ProcessGroups == nil {
+	if c.ConfigManager.ProcessGroups == nil {
 		// XXX TODO NewConfigManager() ?
-		c.configManager.ProcessGroups = make(map[string]*ProcessGroup)
+		c.ConfigManager.ProcessGroups = make(map[string]*ProcessGroup)
 	}
 
-	return c.configManager
+	return c.ConfigManager
 }
 
 // XXX TODO should probably be in configmanager.go
@@ -134,16 +140,15 @@ func (c *Control) visitorOf(process *Process) *visitor {
 	return c.visits[process.Name]
 }
 
-func (c *Control) State(process *Process) *processState {
-	if c.states == nil {
-		c.states = make(map[string]*processState)
+func (c *Control) State(process *Process) *ProcessState {
+	if c.States == nil {
+		c.States = make(map[string]*ProcessState)
 	}
-
-	if _, exists := c.states[process.Name]; !exists {
-		c.states[process.Name] = &processState{}
+	procName := process.Name
+	if _, exists := c.States[procName]; !exists {
+		c.States[procName] = &ProcessState{}
 	}
-
-	return c.states[process.Name]
+	return c.States[procName]
 }
 
 // Registers the event monitor with Control so that it can turn event monitoring
@@ -200,7 +205,9 @@ func (c *Control) DoAction(name string, action int) error {
 		log.Print(err)
 		return err
 	}
-
+	if err := c.PersistStates(c.States); err != nil {
+		log.Printf("Error persisting state: '%v'.\n", err.Error())
+	}
 	return nil
 }
 
@@ -281,7 +288,7 @@ func (c *Control) doUnmonitor(process *Process) {
 
 // Apply actions to processes that depend on the given Process
 func (c *Control) doDepend(process *Process, action int) {
-	c.configManager.VisitProcesses(func(child *Process) bool {
+	c.ConfigManager.VisitProcesses(func(child *Process) bool {
 		for _, dep := range child.DependsOn {
 			if dep == process.Name {
 				switch action {
@@ -383,4 +390,45 @@ func (p *Process) waitState(expect int) int {
 	}
 
 	panic("not reached")
+}
+
+func (c *Control) LoadPersistState() error {
+	states := map[string]ProcessState{}
+	persistFile := c.ConfigManager.Settings.PersistFile
+	_, err := os.Stat(persistFile)
+	if err != nil {
+		log.Printf("No persisted state found at '%v'.", persistFile)
+		return nil
+	}
+	persistData, err := ioutil.ReadFile(persistFile)
+	if err != nil {
+		return err
+	}
+	if err := goyaml.Unmarshal(persistData, states); err != nil {
+		return err
+	}
+	for _, processGroup := range c.ConfigManager.ProcessGroups {
+		for name, process := range processGroup.Processes {
+			if state, hasKey := states[name]; hasKey {
+				*c.State(process) = state
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Control) PersistStates(states map[string]*ProcessState) error {
+	c.persistLock.Lock()
+	defer c.persistLock.Unlock()
+
+	yaml, err := goyaml.Marshal(states)
+	if err != nil {
+		return err
+	}
+	persistFile := c.ConfigManager.Settings.PersistFile
+	if err = ioutil.WriteFile(persistFile, []byte(yaml), 0644); err != nil {
+		return err
+	}
+	log.Printf("Persisted state to '%v'.", persistFile)
+	return nil
 }
