@@ -117,6 +117,10 @@ func RpcArgs(method string, name string, isGroup bool) (string, string) {
 			name = ""
 		}
 
+		if method == "load" {
+			kind = "Config"
+		}
+
 		method = method + kind
 	}
 
