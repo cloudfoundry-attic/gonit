@@ -66,6 +66,8 @@ type Process struct {
 	MonitorMode string
 }
 
+var persistPath = os.Getenv("HOME") + "/.gonit.persist.yml"
+
 const (
 	CONFIG_FILE_POSTFIX   = "-gonit.yml"
 	SETTINGS_FILENAME     = "gonit.yml"
@@ -195,8 +197,17 @@ func (c *ConfigManager) parseFile(path string) error {
 }
 
 // Main function to call, parses a path for gonit config file(s).
-func (c *ConfigManager) Parse(paths ...string) error {
+func (c *ConfigManager) LoadConfig(paths ...string) error {
+	if len(paths) == 0 || paths[0] == "" {
+		if err := c.loadPersistentConfig(); err != nil {
+			return fmt.Errorf("No config given and no persistent config found.\n")
+		} else {
+			return nil
+		}
+	}
+
 	c.ProcessGroups = map[string]*ProcessGroup{}
+	c.Settings = &Settings{}
 	for _, path := range paths {
 		fileInfo, err := os.Stat(path)
 		if err != nil {
@@ -214,12 +225,16 @@ func (c *ConfigManager) Parse(paths ...string) error {
 		c.fillInNames()
 	}
 
-	if c.Settings == nil {
+	if (*c.Settings == Settings{}) {
 		log.Printf("No settings found, using defaults.")
 	}
 	c.applyDefaultSettings()
 	c.applyDefaultConfigOpts()
 	if err := c.validate(); err != nil {
+		return err
+	}
+
+	if err := c.writePersistentConfig(); err != nil {
 		return err
 	}
 	return nil
@@ -310,4 +325,35 @@ func (p *Process) IsMonitoringModePassive() bool {
 
 func (p *Process) IsMonitoringModeManual() bool {
 	return p.MonitorMode == MONITOR_MODE_MANUAL
+}
+
+func (c *ConfigManager) loadPersistentConfig() error {
+	_, err := os.Stat(persistPath)
+	if err != nil {
+		return fmt.Errorf("Persisted config not found at '%v'.\n", persistPath)
+	}
+
+	yaml, err := ioutil.ReadFile(persistPath)
+	if err != nil {
+		return err
+	}
+	tc := ConfigManager{}
+	if err := goyaml.Unmarshal(yaml, &tc); err != nil {
+		return err
+	}
+	*c = tc
+	log.Printf("No config given, loaded persisted config '%v'.\n", persistPath)
+	return nil
+}
+
+func (c *ConfigManager) writePersistentConfig() error {
+	yaml, err := goyaml.Marshal(c)
+	if err != nil {
+		return err
+	}
+	if err = ioutil.WriteFile(persistPath, []byte(yaml), 0644); err != nil {
+		return err
+	}
+	log.Printf("Persisted config to '%v'.", persistPath)
+	return nil
 }

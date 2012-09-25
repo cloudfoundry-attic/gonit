@@ -5,6 +5,7 @@ package gonit
 import (
 	"errors"
 	"github.com/cloudfoundry/gosigar"
+	"log"
 )
 
 // until stubs are implemented
@@ -80,6 +81,58 @@ func (c *Control) callAction(name string, r *ActionResult, action int) error {
 	}
 
 	return err
+}
+
+func (a *API) startNewAndOldProcesses(runningProcesses map[string]bool,
+	oldProcesses map[string]bool, r *ActionResult) error {
+	for _, processGroup := range a.Control.Config().ProcessGroups {
+		for name, _ := range processGroup.Processes {
+			// If it's an old running process still in the process map, restart it.
+			if _, hasKey := runningProcesses[name]; hasKey {
+				if err := a.StartProcess(name, r); err != nil {
+					return err
+				}
+			} else if _, hasKey := oldProcesses[name]; !hasKey {
+				// Start it if it is a new process.
+				if err := a.StartProcess(name, r); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (a *API) LoadConfig(name string, r *ActionResult) error {
+	log.Printf("Starting config reload.")
+	runningProcesses := map[string]bool{}
+	oldProcesses := map[string]bool{}
+	control := a.Control
+	control.EventMonitor.Stop()
+	for _, processGroup := range control.Config().ProcessGroups {
+		for name, process := range processGroup.Processes {
+			oldProcesses[name] = true
+			if process.IsRunning() {
+				runningProcesses[name] = true
+				if err := a.StopProcess(name, r); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if err := control.configManager.LoadConfig(name); err != nil {
+		return err
+	}
+	if err := a.startNewAndOldProcesses(runningProcesses,
+		oldProcesses, r); err != nil {
+		return err
+	}
+	if err := control.EventMonitor.Start(control.configManager,
+		control); err != nil {
+		return err
+	}
+	log.Printf("Finished config reload.")
+	return nil
 }
 
 func (a *API) StartProcess(name string, r *ActionResult) error {
