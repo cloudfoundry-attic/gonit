@@ -118,6 +118,9 @@ func RpcArgs(method string, name string, isGroup bool) (string, string) {
 		}
 
 		method = method + kind
+	} else if method == "status" {
+		// Default `gonit status` to `gonit status all`
+		method = method + "All"
 	}
 
 	return ucfirst(method), name
