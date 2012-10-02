@@ -29,6 +29,7 @@ type Settings struct {
 	RpcServerUrl   string
 	PollInterval   int
 	Daemon         *Process
+	Logging        *LoggerConfig
 }
 
 type ProcessGroup struct {
@@ -176,6 +177,9 @@ func (c *ConfigManager) ApplyDefaultSettings() {
 	settings := c.Settings
 	if settings.AlertTransport == "" {
 		settings.AlertTransport = DEFAULT_ALERT_TRANSPORT
+	}
+	if settings.Logging == nil {
+		settings.Logging = &LoggerConfig{}
 	}
 	if settings.Daemon == nil {
 		settings.Daemon = &Process{}

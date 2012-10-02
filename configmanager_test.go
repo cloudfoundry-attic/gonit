@@ -31,6 +31,8 @@ func assertFileParsed(t *testing.T, configManager *ConfigManager) {
 	assert.Equal(t, 0, configManager.Settings.PollInterval)
 	assert.NotEqual(t, nil, configManager.Settings.Daemon)
 	assert.Equal(t, "lolnit", configManager.Settings.Daemon.Name)
+	assert.NotEqual(t, nil, configManager.Settings.Logging)
+	assert.Equal(t, "debug", configManager.Settings.Logging.Level)
 }
 
 func TestGetPid(t *testing.T) {

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"os/user"
@@ -206,7 +205,7 @@ func WritePidFile(pid int, path string) error {
 
 // Write pid to Pidfile
 func (p *Process) SavePid(pid int) error {
-	log.Printf("Saving %q pid to file=%s", p.Name, p.Pidfile)
+	Log.Debugf("Saving %q pid to file=%s", p.Name, p.Pidfile)
 	return WritePidFile(pid, p.Pidfile)
 }
 
