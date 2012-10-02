@@ -4,7 +4,6 @@ package gonit
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"time"
 )
@@ -159,14 +158,14 @@ func (c *Control) DoAction(name string, action int) error {
 
 	process, err := c.Config().FindProcess(name)
 	if err != nil {
-		log.Print(err)
+		Log.Error(err.Error())
 		return err
 	}
 
 	switch action {
 	case ACTION_START:
 		if process.IsRunning() {
-			log.Printf("Process %q already running", name)
+			Log.Debugf("Process %q already running", name)
 			c.monitorSet(process)
 			return nil
 		}
@@ -195,9 +194,8 @@ func (c *Control) DoAction(name string, action int) error {
 		c.doUnmonitor(process)
 
 	default:
-		err = fmt.Errorf("process %q -- invalid action: %d",
+		Log.Errorf("process %q -- invalid action: %d",
 			process.Name, action)
-		log.Print(err)
 		return err
 	}
 
@@ -313,7 +311,7 @@ func (c *Control) monitorSet(process *Process) {
 	if state.Monitor == MONITOR_NOT {
 		state.Monitor = MONITOR_INIT
 		c.EventMonitor.StartMonitoringProcess(process)
-		log.Printf("%q monitoring enabled", process.Name)
+		Log.Infof("%q monitoring enabled", process.Name)
 	}
 }
 
@@ -323,7 +321,7 @@ func (c *Control) monitorUnset(process *Process) {
 	defer state.MonitorLock.Unlock()
 	if state.Monitor != MONITOR_NOT {
 		state.Monitor = MONITOR_NOT
-		log.Printf("%q monitoring disabled", process.Name)
+		Log.Infof("%q monitoring disabled", process.Name)
 	}
 }
 
@@ -368,16 +366,16 @@ func (p *Process) waitState(expect int) int {
 	// XXX TODO emit events when process state changes
 	if isRunning {
 		if expect == processStarted {
-			log.Printf("process %q started", p.Name)
+			Log.Infof("process %q started", p.Name)
 		} else {
-			log.Printf("process %q failed to stop", p.Name)
+			Log.Errorf("process %q failed to stop", p.Name)
 		}
 		return processStarted
 	} else {
 		if expect == processStarted {
-			log.Printf("process %q failed to start", p.Name)
+			Log.Errorf("process %q failed to start", p.Name)
 		} else {
-			log.Printf("process %q stopped", p.Name)
+			Log.Infof("process %q stopped", p.Name)
 		}
 		return processStopped
 	}
