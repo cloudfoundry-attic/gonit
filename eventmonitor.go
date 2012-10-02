@@ -5,7 +5,6 @@ package gonit
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"net"
 	"strings"
@@ -151,7 +150,7 @@ func (e *EventMonitor) setup(configManager *ConfigManager,
 
 func (e *EventMonitor) printTriggeredMessage(event *ParsedEvent,
 	resourceVal uint64) {
-	log.Printf("'%v' triggered '%v' for '%v' (at '%v'). Executing '%v'.\n",
+	Log.Infof("'%v' triggered '%v' for '%v' (at '%v'). Executing '%v'",
 		event.processName, event.ruleString, event.duration, resourceVal,
 		event.action)
 }
@@ -198,15 +197,15 @@ func (e *EventMonitor) Start(configManager *ConfigManager,
 	if err := e.setup(configManager, control); err != nil {
 		return err
 	}
-	log.Println("Starting new eventmonitor loop.")
+	Log.Info("Starting new eventmonitor loop.")
 	go func() {
 		timeToWait := 1 * time.Second
 		ticker := time.NewTicker(timeToWait)
-		log.Println("Started new eventmonitor loop.")
+		Log.Info("Started new eventmonitor loop.")
 		for {
 			select {
 			case <-e.quitChan:
-				log.Println("Quit old eventmonitor loop.")
+				Log.Info("Quit old eventmonitor loop.")
 				ticker.Stop()
 				return
 			case <-ticker.C:
@@ -218,8 +217,8 @@ func (e *EventMonitor) Start(configManager *ConfigManager,
 							// file.
 							pid, err := process.Pid()
 							if err != nil {
-								log.Printf("Could not get pid file for process '%v'. Error: "+
-									"%+v\n", process.Name, err)
+								Log.Debugf("Could not get pid file for process '%v'. Error: "+
+									"%+v", process.Name, err)
 							}
 							e.checkRules(process, pid)
 						}
@@ -232,7 +231,7 @@ func (e *EventMonitor) Start(configManager *ConfigManager,
 }
 
 func (e *EventMonitor) Stop() {
-	log.Println("Quitting old eventmonitor loop.")
+	Log.Info("Quitting old eventmonitor loop.")
 	e.quitChan <- true
 	close(e.quitChan)
 	e.resourceManager.CleanData()
@@ -251,14 +250,14 @@ func (e *EventMonitor) checkRules(process *Process, pid int) {
 			var err error
 			resourceVal, err = e.resourceManager.GetResource(event, pid)
 			if err != nil {
-				log.Print(err)
+				Log.Error(err.Error())
 				continue
 			}
 			ruleTriggered := checkRule(event, resourceVal)
 			if ruleTriggered {
 				// TODO right now this can block the monitoring loop.
 				if err := e.triggerAction(process, event, resourceVal); err != nil {
-					log.Print(err)
+					Log.Error(err.Error())
 				}
 			}
 		}

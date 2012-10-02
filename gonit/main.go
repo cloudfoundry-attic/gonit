@@ -21,6 +21,7 @@ var (
 	config     string
 	pidfile    string
 	rpcUrl     string
+	logLevel   string
 	poll       int
 	group      bool
 	foreground bool
@@ -55,6 +56,10 @@ func main() {
 	settings = configManager.Settings
 	applySettings()
 
+	if err := settings.Logging.Init(); err != nil {
+		log.Fatal(err)
+	}
+
 	api = gonit.NewAPI(configManager)
 	args := flag.Args()
 	if len(args) == 0 {
@@ -84,6 +89,9 @@ func applySettings() {
 	if poll != 0 {
 		settings.PollInterval = poll
 	}
+	if logLevel != "" {
+		settings.Logging.Level = logLevel
+	}
 }
 
 func parseFlags() {
@@ -94,6 +102,7 @@ func parseFlags() {
 	flag.StringVar(&pidfile, "p", "", "Pid file path")
 	flag.StringVar(&rpcUrl, "s", "", "RPC server URL")
 	flag.IntVar(&poll, "d", 0, "Run as a daemon with duration")
+	flag.StringVar(&logLevel, "l", "", "Log level")
 
 	const named = "the named process or group"
 	const all = "all processes"
@@ -202,6 +211,8 @@ func shutdown() {
 	if rpcServer != nil {
 		rpcServer.Shutdown()
 	}
+
+	settings.Logging.Close()
 
 	os.Exit(0)
 }

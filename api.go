@@ -4,9 +4,8 @@ package gonit
 
 import (
 	"errors"
-	"sort"
 	"github.com/cloudfoundry/gosigar"
-	"log"
+	"sort"
 )
 
 // until stubs are implemented
@@ -288,7 +287,7 @@ func (a *API) About(unused interface{}, about *About) error {
 
 // reload server configuration
 func (a *API) Reload(unused interface{}, r *ActionResult) error {
-	log.Printf("Starting config reload.")
+	Log.Info("Starting config reload")
 	control := a.Control
 	path := control.ConfigManager.path
 	newConfigManager := ConfigManager{}
@@ -302,7 +301,7 @@ func (a *API) Reload(unused interface{}, r *ActionResult) error {
 		control); err != nil {
 		return err
 	}
-	log.Printf("Finished config reload.")
+	Log.Info("Finished config reload")
 	return nil
 }
 

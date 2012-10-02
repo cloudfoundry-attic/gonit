@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/xushiwei/goyaml"
 	"io/ioutil"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -164,14 +163,14 @@ func (c *Control) DoAction(name string, action int) error {
 
 	process, err := c.Config().FindProcess(name)
 	if err != nil {
-		log.Print(err)
+		Log.Error(err.Error())
 		return err
 	}
 
 	switch action {
 	case ACTION_START:
 		if process.IsRunning() {
-			log.Printf("Process %q already running", name)
+			Log.Debugf("Process %q already running", name)
 			c.monitorSet(process)
 			return nil
 		}
@@ -200,13 +199,12 @@ func (c *Control) DoAction(name string, action int) error {
 		c.doUnmonitor(process)
 
 	default:
-		err = fmt.Errorf("process %q -- invalid action: %d",
+		Log.Errorf("process %q -- invalid action: %d",
 			process.Name, action)
-		log.Print(err)
 		return err
 	}
 	if err := c.PersistStates(c.States); err != nil {
-		log.Printf("Error persisting state: '%v'.\n", err.Error())
+		Log.Errorf("Error persisting state: '%v'", err.Error())
 	}
 	return nil
 }
@@ -320,7 +318,7 @@ func (c *Control) monitorSet(process *Process) {
 	if state.Monitor == MONITOR_NOT {
 		state.Monitor = MONITOR_INIT
 		c.EventMonitor.StartMonitoringProcess(process)
-		log.Printf("%q monitoring enabled", process.Name)
+		Log.Infof("%q monitoring enabled", process.Name)
 	}
 }
 
@@ -330,7 +328,7 @@ func (c *Control) monitorUnset(process *Process) {
 	defer state.MonitorLock.Unlock()
 	if state.Monitor != MONITOR_NOT {
 		state.Monitor = MONITOR_NOT
-		log.Printf("%q monitoring disabled", process.Name)
+		Log.Infof("%q monitoring disabled", process.Name)
 	}
 }
 
@@ -375,16 +373,16 @@ func (p *Process) waitState(expect int) int {
 	// XXX TODO emit events when process state changes
 	if isRunning {
 		if expect == processStarted {
-			log.Printf("process %q started", p.Name)
+			Log.Infof("process %q started", p.Name)
 		} else {
-			log.Printf("process %q failed to stop", p.Name)
+			Log.Errorf("process %q failed to stop", p.Name)
 		}
 		return processStarted
 	} else {
 		if expect == processStarted {
-			log.Printf("process %q failed to start", p.Name)
+			Log.Errorf("process %q failed to start", p.Name)
 		} else {
-			log.Printf("process %q stopped", p.Name)
+			Log.Infof("process %q stopped", p.Name)
 		}
 		return processStopped
 	}
@@ -397,7 +395,7 @@ func (c *Control) LoadPersistState() error {
 	persistFile := c.ConfigManager.Settings.PersistFile
 	_, err := os.Stat(persistFile)
 	if err != nil {
-		log.Printf("No persisted state found at '%v'.", persistFile)
+		Log.Debugf("No persisted state found at '%v'", persistFile)
 		return nil
 	}
 	persistData, err := ioutil.ReadFile(persistFile)
@@ -429,6 +427,6 @@ func (c *Control) PersistStates(states map[string]*ProcessState) error {
 	if err = ioutil.WriteFile(persistFile, []byte(yaml), 0644); err != nil {
 		return err
 	}
-	log.Printf("Persisted state to '%v'.", persistFile)
+	Log.Debugf("Persisted state to '%v'", persistFile)
 	return nil
 }

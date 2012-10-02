@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/xushiwei/goyaml"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +30,7 @@ type Settings struct {
 	PollInterval   int
 	Daemon         *Process
 	PersistFile    string
+	Logging        *LoggerConfig
 }
 
 type ProcessGroup struct {
@@ -126,7 +126,7 @@ func (c *ConfigManager) parseConfigFile(path string) (*ProcessGroup, error) {
 	if err := goyaml.Unmarshal(b, processGroup); err != nil {
 		return nil, err
 	}
-	log.Printf("Loaded config file '%+v'\n", path)
+	Log.Infof("Loaded config file '%+v'", path)
 	return processGroup, nil
 }
 
@@ -140,7 +140,7 @@ func (c *ConfigManager) parseSettingsFile(path string) (*Settings, error) {
 	if err := goyaml.Unmarshal(b, settings); err != nil {
 		return nil, err
 	}
-	log.Printf("Loaded settings file: '%+v'\n", path)
+	Log.Infof("Loaded settings file: '%+v'", path)
 	return settings, nil
 }
 
@@ -178,6 +178,9 @@ func (c *ConfigManager) ApplyDefaultSettings() {
 	settings := c.Settings
 	if settings.AlertTransport == "" {
 		settings.AlertTransport = DEFAULT_ALERT_TRANSPORT
+	}
+	if settings.Logging == nil {
+		settings.Logging = &LoggerConfig{}
 	}
 	if settings.Daemon == nil {
 		settings.Daemon = &Process{}
@@ -261,7 +264,7 @@ func (c *ConfigManager) LoadConfig(path string) error {
 	}
 	c.fillInNames()
 	if (*c.Settings == Settings{}) {
-		log.Printf("No settings found, using defaults.")
+		Log.Info("No settings found, using defaults")
 	}
 	c.ApplyDefaultSettings()
 	c.applyDefaultConfigOpts()

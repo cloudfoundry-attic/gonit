@@ -3,3 +3,5 @@ alerttransport: none
 daemon:
   name: lolnit
   pidfile: /tmp/lolnit.pid
+logging:
+  level: debug
