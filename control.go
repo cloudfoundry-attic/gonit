@@ -51,7 +51,7 @@ type visitor struct {
 // XXX TODO should state be attached to Process type?
 type processState struct {
 	Monitor     int
-	MonitorLock sync.Mutex
+	monitorLock sync.Mutex
 	Starts      int
 }
 
@@ -308,8 +308,8 @@ func (c *Control) doDepend(process *Process, action int) {
 
 func (c *Control) monitorSet(process *Process) {
 	state := c.State(process)
-	state.MonitorLock.Lock()
-	defer state.MonitorLock.Unlock()
+	state.monitorLock.Lock()
+	defer state.monitorLock.Unlock()
 	if state.Monitor == MONITOR_NOT {
 		state.Monitor = MONITOR_INIT
 		c.EventMonitor.StartMonitoringProcess(process)
@@ -319,8 +319,8 @@ func (c *Control) monitorSet(process *Process) {
 
 func (c *Control) monitorUnset(process *Process) {
 	state := c.State(process)
-	state.MonitorLock.Lock()
-	defer state.MonitorLock.Unlock()
+	state.monitorLock.Lock()
+	defer state.monitorLock.Unlock()
 	if state.Monitor != MONITOR_NOT {
 		state.Monitor = MONITOR_NOT
 		log.Printf("%q monitoring disabled", process.Name)
@@ -329,8 +329,8 @@ func (c *Control) monitorUnset(process *Process) {
 
 func (c *Control) IsMonitoring(process *Process) bool {
 	state := c.State(process)
-	state.MonitorLock.Lock()
-	defer state.MonitorLock.Unlock()
+	state.monitorLock.Lock()
+	defer state.monitorLock.Unlock()
 	return state.Monitor == MONITOR_INIT || state.Monitor == MONITOR_YES
 }
 
