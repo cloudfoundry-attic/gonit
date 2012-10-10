@@ -4,6 +4,7 @@ package gonit
 
 import (
 	"errors"
+	"sort"
 	"github.com/cloudfoundry/gosigar"
 )
 
@@ -35,6 +36,30 @@ type SystemStatus struct {
 type ProcessGroupStatus struct {
 	Name  string
 	Group []ProcessStatus
+}
+
+func (pgs *ProcessGroupStatus) Len() int {
+	return len(pgs.Group)
+}
+
+func (pgs *ProcessGroupStatus) Less(i, j int) bool {
+	return pgs.Group[i].Summary.Name < pgs.Group[j].Summary.Name
+}
+
+func (pgs *ProcessGroupStatus) Swap(i, j int) {
+	pgs.Group[i], pgs.Group[j] = pgs.Group[j], pgs.Group[i]
+}
+
+func (s *Summary) Len() int {
+	return len(s.Processes)
+}
+
+func (s *Summary) Less(i, j int) bool {
+	return s.Processes[i].Name < s.Processes[j].Name
+}
+
+func (s *Summary) Swap(i, j int) {
+	s.Processes[i], s.Processes[j] = s.Processes[j], s.Processes[i]
 }
 
 type Summary struct {
@@ -182,6 +207,7 @@ func (c *Control) groupStatus(group *ProcessGroup,
 		c.processStatus(process, &status)
 		groupStatus.Group = append(groupStatus.Group, status)
 	}
+	sort.Sort(groupStatus)
 
 	return nil
 }
@@ -248,7 +274,7 @@ func (a *API) Summary(unused interface{}, s *Summary) error {
 			s.Processes = append(s.Processes, summary)
 		}
 	}
-
+	sort.Sort(s)
 	return nil
 }
 
