@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"text/tabwriter"
+	"container/list"
 	"time"
 )
 
@@ -20,18 +21,64 @@ func (p *ProcessStatus) Print(w io.Writer) {
 	})
 }
 
+func (g *ProcessGroupStatus) sort() (*list.List) {
+	newList := list.New()
+	for _, ps := range g.Group {
+		insertName := ps.Summary.Name
+		insertted := false
+		for e := newList.Front(); e != nil; e = e.Next() {
+			processStatus := e.Value.(ProcessStatus)
+			compareName := processStatus.Summary.Name
+			if insertName == compareName || insertName < compareName {
+				newList.InsertBefore(ps, e)
+				insertted = true
+				break
+			}
+		}
+		if !insertted {
+			newList.PushBack(ps)
+		}
+	}
+	return newList
+}
+
+func (s *Summary) sort() (*list.List) {
+	newList := list.New()
+	for _, ps := range s.Processes {
+		insertName := ps.Name
+		insertted := false
+		for e := newList.Front(); e != nil; e = e.Next() {
+			processStatus := e.Value.(ProcessSummary)
+			compareName := processStatus.Name
+			if insertName == compareName || insertName < compareName {
+				newList.InsertBefore(ps, e)
+				insertted = true
+				break
+			}
+		}
+		if !insertted {
+			newList.PushBack(ps)
+		}
+	}
+	return newList
+}
+
 func (g *ProcessGroupStatus) Print(w io.Writer) {
 	writeTable(w, func(tw io.Writer) {
-		for _, p := range g.Group {
-			p.write(tw)
+		sortedGroup := g.sort()
+		for e := sortedGroup.Front(); e != nil; e = e.Next() {
+			ps := e.Value.(ProcessStatus)
+			ps.write(tw)
 		}
 	})
 }
 
 func (s *Summary) Print(w io.Writer) {
 	writeTable(w, func(tw io.Writer) {
-		for _, p := range s.Processes {
-			p.write(tw)
+		sortedSummary := s.sort()
+		for e := sortedSummary.Front(); e != nil; e = e.Next() {
+			ps := e.Value.(ProcessSummary)
+			ps.write(tw)
 		}
 	})
 }
