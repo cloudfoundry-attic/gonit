@@ -5,6 +5,7 @@ package gonit
 import (
 	"fmt"
 	"io"
+	"sort"
 	"text/tabwriter"
 	"time"
 )
@@ -22,16 +23,18 @@ func (p *ProcessStatus) Print(w io.Writer) {
 
 func (g *ProcessGroupStatus) Print(w io.Writer) {
 	writeTable(w, func(tw io.Writer) {
-		for _, p := range g.Group {
-			p.write(tw)
+		sort.Sort(g)
+		for _, ps := range g.Group {
+			ps.write(tw)
 		}
 	})
 }
 
 func (s *Summary) Print(w io.Writer) {
 	writeTable(w, func(tw io.Writer) {
-		for _, p := range s.Processes {
-			p.write(tw)
+		sort.Sort(s)
+		for _, s := range s.Processes {
+			s.write(tw)
 		}
 	})
 }
