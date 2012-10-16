@@ -253,6 +253,10 @@ func runDaemon(control *gonit.Control, configManager *gonit.ConfigManager) {
 		log.Print("daemonize - not yet supported")
 	}
 
+	if err = configManager.LoadPersistData(control); err != nil {
+		return err
+	}
+
 	err := daemon.SavePid(os.Getpid())
 	if err != nil {
 		log.Fatal(err)

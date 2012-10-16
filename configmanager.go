@@ -24,7 +24,6 @@ type ConfigManager struct {
 	Settings      *Settings
 	path          string
 	persistLock   sync.Mutex
-	PersistData   map[string]ProcessState
 }
 
 type Settings struct {
@@ -271,14 +270,11 @@ func (c *ConfigManager) LoadConfig(path string) error {
 	if err := c.validate(); err != nil {
 		return err
 	}
-	if err = c.LoadPersistData(); err != nil {
-		return err
-	}
 	return nil
 }
 
-func (c *ConfigManager) LoadPersistData() error {
-	c.PersistData = map[string]ProcessState{}
+func (c *ConfigManager) LoadPersistData(control *Control) error {
+	states := map[string]ProcessState{}
 	persistFile := c.Settings.PersistFile
 	_, err := os.Stat(persistFile)
 	if err != nil {
@@ -289,8 +285,15 @@ func (c *ConfigManager) LoadPersistData() error {
 	if err != nil {
 		return err
 	}
-	if err := goyaml.Unmarshal(persistData, c.PersistData); err != nil {
+	if err := goyaml.Unmarshal(persistData, states); err != nil {
 		return err
+	}
+	for _, processGroup := range c.ProcessGroups {
+		for name, process := range processGroup.Processes {
+			if state, hasKey := states[name]; hasKey {
+				*control.State(process) = state
+			}
+		}
 	}
 	return nil
 }
@@ -308,17 +311,8 @@ func (c *ConfigManager) applyDefaultMonitorMode() {
 func (c *ConfigManager) PersistStates(states map[string]*ProcessState) error {
 	c.persistLock.Lock()
 	defer c.persistLock.Unlock()
-	if c.PersistData == nil {
-		c.PersistData = map[string]ProcessState{}
-	}
-	for _, processGroup := range c.ProcessGroups {
-		for name, _ := range processGroup.Processes {
-			if state, hasKey := states[name]; hasKey {
-				c.PersistData[name] = *state
-			}
-		}
-	}
-	yaml, err := goyaml.Marshal(c.PersistData)
+
+	yaml, err := goyaml.Marshal(states)
 	if err != nil {
 		return err
 	}

@@ -140,35 +140,44 @@ func TestValidatePersistGood(t *testing.T) {
 
 func TestLoadPersistData(t *testing.T) {
 	configManager := &ConfigManager{Settings: &Settings{}}
+	control := &Control{ConfigManager: configManager}
 	testPersistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
-	configManager.Settings.PersistFile = testPersistFile
-	configManager.LoadPersistData()
-	assert.NotEqual(t, nil, configManager.PersistData["MyProcess"])
-	assert.Equal(t, 2, configManager.PersistData["MyProcess"].Starts)
-	assert.Equal(t, 2, configManager.PersistData["MyProcess"].Monitor)
-}
-
-func TestPersistData(t *testing.T) {
-	configManager := &ConfigManager{Settings: &Settings{}}
-	testPersistFile := os.Getenv("PWD") + "/test/config/test_persist_file.yml"
-	defer os.Remove(testPersistFile)
-	process := &Process{}
+	process := &Process{Name: "MyProcess"}
 	processes := map[string]*Process{}
 	processes["MyProcess"] = process
 	pgs := map[string]*ProcessGroup{}
 	pgs["somegroup"] = &ProcessGroup{Processes: processes}
 	configManager.ProcessGroups = pgs
 	configManager.Settings.PersistFile = testPersistFile
-	configManager.LoadPersistData()
-	assert.Equal(t, map[string]ProcessState{}, configManager.PersistData)
+	configManager.LoadPersistData(control)
+	assert.NotEqual(t, nil, control.states["MyProcess"])
+	assert.Equal(t, 2, control.states["MyProcess"].Starts)
+	assert.Equal(t, 2, control.states["MyProcess"].Monitor)
+}
+
+func TestPersistData(t *testing.T) {
+	configManager := &ConfigManager{Settings: &Settings{}}
+	control := &Control{ConfigManager: configManager}
+	testPersistFile := os.Getenv("PWD") + "/test/config/test_persist_file.yml"
+	defer os.Remove(testPersistFile)
+	process := &Process{Name: "MyProcess"}
+	processes := map[string]*Process{}
+	processes["MyProcess"] = process
+	pgs := map[string]*ProcessGroup{}
+	pgs["somegroup"] = &ProcessGroup{Processes: processes}
+	configManager.ProcessGroups = pgs
+	configManager.Settings.PersistFile = testPersistFile
+	configManager.LoadPersistData(control)
+	var noState map[string]*ProcessState
+	assert.Equal(t, noState, control.states)
 	processState := &ProcessState{Monitor: 0x2, Starts: 3}
 	states := map[string]*ProcessState{}
 	states["MyProcess"] = processState
 	err := configManager.PersistStates(states)
 	assert.Equal(t, nil, err)
-	err = configManager.LoadPersistData()
+	err = configManager.LoadPersistData(control)
 	assert.Equal(t, nil, err)
-	assert.NotEqual(t, nil, configManager.PersistData["MyProcess"])
-	assert.Equal(t, 3, configManager.PersistData["MyProcess"].Starts)
-	assert.Equal(t, 2, configManager.PersistData["MyProcess"].Monitor)
+	assert.NotEqual(t, nil, control.states["MyProcess"])
+	assert.Equal(t, 3, control.states["MyProcess"].Starts)
+	assert.Equal(t, 2, control.states["MyProcess"].Monitor)
 }

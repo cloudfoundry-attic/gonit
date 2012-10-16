@@ -7,7 +7,6 @@ import (
 	"github.com/bmizerany/assert"
 	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
-	"os"
 	"testing"
 )
 
@@ -182,16 +181,4 @@ func TestDepends(t *testing.T) {
 		assert.Equal(t, false, p.IsRunning())
 		return true
 	})
-}
-
-func TestLoadPersistState(t *testing.T) {
-	configManager := &ConfigManager{Settings: &Settings{}}
-	testPersistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
-	configManager.Settings.PersistFile = testPersistFile
-	configManager.LoadPersistData()
-	control := &Control{ConfigManager: configManager}
-	process := &Process{Name: "MyProcess"}
-	state := control.State(process)
-	assert.Equal(t, 2, state.Starts)
-	assert.Equal(t, MONITOR_INIT, state.Monitor)
 }

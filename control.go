@@ -142,14 +142,7 @@ func (c *Control) State(process *Process) *ProcessState {
 	}
 	procName := process.Name
 	if _, exists := c.states[procName]; !exists {
-		persistData := c.ConfigManager.PersistData
-		// If there was a persisted one, load that instead.
-		if state, exists := persistData[procName]; exists {
-			log.Printf("\"%v\" loaded persisted state \"%+v\".", procName, state)
-			c.states[procName] = &state
-		} else {
-			c.states[procName] = &ProcessState{}
-		}
+		c.states[procName] = &ProcessState{}
 	}
 	return c.states[procName]
 }
