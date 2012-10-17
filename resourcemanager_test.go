@@ -3,11 +3,14 @@
 package gonit
 
 import (
-	"github.com/bmizerany/assert"
+	. "launchpad.net/gocheck"
 	"os"
-	"testing"
 	"time"
 )
+
+type ResourceSuite struct{}
+
+var _ = Suite(&ResourceSuite{})
 
 type FakeSigarGetter struct {
 	memResident uint64
@@ -33,7 +36,7 @@ func Setup() {
 	}
 }
 
-func TestCalculateProcPercent(t *testing.T) {
+func (s *ResourceSuite) TestCalculateProcPercent(c *C) {
 	Setup()
 	first := &DataTimestamp{
 		data: 2886, nanoTimestamp: 1.342471447022575e+18}
@@ -45,12 +48,12 @@ func TestCalculateProcPercent(t *testing.T) {
 	resourceHolder := ResourceHolder{dataTimestamps: data, maxDataToStore: 3}
 	proc, err := resourceHolder.calculateProcPercent(second, first)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, uint64(48), proc)
+	c.Check(uint64(48), Equals, proc)
 }
 
-func TestGatherMem(t *testing.T) {
+func (s *ResourceSuite) TestGatherMem(c *C) {
 	Setup()
 	duration, _ := time.ParseDuration("0s")
 	interval, _ := time.ParseDuration("1s")
@@ -62,21 +65,21 @@ func TestGatherMem(t *testing.T) {
 	}
 	resourceVal, err := r.GetResource(pe, 1234)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, uint64(1024), resourceVal)
+	c.Check(uint64(1024), Equals, resourceVal)
 }
 
-func TestgetMemResident(t *testing.T) {
+func (s *ResourceSuite) TestgetMemResident(c *C) {
 	Setup()
 	pid := os.Getpid()
 	val, err := r.sigarInterface.getMemResident(pid)
-	assert.Equal(t, nil, err)
-	assert.NotEqual(t, 0, val)
+	c.Check(err, IsNil)
+	c.Check(0, Not(Equals), val)
 }
 
 // When we have gotten proc percent twice, then we can get the proc time.
-func TestGatherProcPercent(t *testing.T) {
+func (s *ResourceSuite) TestGatherProcPercent(c *C) {
 	Setup()
 	duration, _ := time.ParseDuration("2s")
 	interval, _ := time.ParseDuration("1s")
@@ -89,7 +92,7 @@ func TestGatherProcPercent(t *testing.T) {
 	}
 	resourceVal, err := r.GetResource(pe, 1234)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
 	fsg.procUsed = 3849
 	r.SetSigarInterface(&fsg)
@@ -99,51 +102,52 @@ func TestGatherProcPercent(t *testing.T) {
 	r.ClearCachedResources()
 	resourceVal, err = r.GetResource(pe, 1234)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.NotEqual(t, uint64(0), resourceVal)
+	c.Check(uint64(0), Not(Equals), resourceVal)
 }
 
-func TestParseAmountErrors(t *testing.T) {
+func (s *ResourceSuite) TestParseAmountErrors(c *C) {
 	Setup()
 	_, err := r.ParseAmount(MEMORY_USED_NAME, "2k")
-	assert.Equal(t, "memory_used '2k' is not the correct format.", err.Error())
+	c.Check("memory_used '2k' is not the correct format.", Equals, err.Error())
 
 	_, err = r.ParseAmount(MEMORY_USED_NAME, "$kb")
-	assert.Equal(t, "strconv.ParseUint: parsing \"$\": invalid syntax",
+	c.Check("strconv.ParseUint: parsing \"$\": invalid syntax", Equals,
 		err.Error())
 
 	_, err = r.ParseAmount(MEMORY_USED_NAME, "5zb")
-	assert.Equal(t, "Invalid units 'zb' on 'memory_used'.", err.Error())
+	c.Check("Invalid units 'zb' on 'memory_used'.", Equals, err.Error())
 
 	_, err = r.ParseAmount(CPU_PERCENT_NAME, "5zb")
-	assert.Equal(t, "strconv.ParseUint: parsing \"5zb\": invalid syntax",
+	c.Check("strconv.ParseUint: parsing \"5zb\": invalid syntax", Equals,
 		err.Error())
+
 }
 
-func TestIsValidResourceName(t *testing.T) {
+func (s *ResourceSuite) TestIsValidResourceName(c *C) {
 	Setup()
-	assert.Equal(t, true, r.IsValidResourceName(MEMORY_USED_NAME))
-	assert.Equal(t, true, r.IsValidResourceName(CPU_PERCENT_NAME))
-	assert.Equal(t, true, r.IsValidResourceName(CPU_PERCENT_NAME))
+	c.Check(true, Equals, r.IsValidResourceName(MEMORY_USED_NAME))
+	c.Check(true, Equals, r.IsValidResourceName(CPU_PERCENT_NAME))
+	c.Check(true, Equals, r.IsValidResourceName(CPU_PERCENT_NAME))
 }
 
-func TestSaveDataReusesSlice(t *testing.T) {
+func (s *ResourceSuite) TestSaveDataReusesSlice(c *C) {
 	rh := &ResourceHolder{}
 	rh.maxDataToStore = 3
 	for i := int64(0); i < rh.maxDataToStore; i++ {
 		rh.saveData(uint64(i))
 	}
 	data := rh.dataTimestamps
-	assert.Equal(t, uint64(0), data[0].data)
-	assert.Equal(t, uint64(rh.maxDataToStore-1), data[len(data)-1].data)
+	c.Check(uint64(0), Equals, data[0].data)
+	c.Check(uint64(rh.maxDataToStore-1), Equals, data[len(data)-1].data)
 	rh.saveData(1337)
-	assert.Equal(t, uint64(1337), data[0].data)
+	c.Check(uint64(1337), Equals, data[0].data)
 	rh.saveData(1338)
-	assert.Equal(t, uint64(1338), data[1].data)
+	c.Check(uint64(1338), Equals, data[1].data)
 }
 
-func TestCircularProcData(t *testing.T) {
+func (s *ResourceSuite) TestCircularProcData(c *C) {
 	Setup()
 	duration, _ := time.ParseDuration("3s")
 	interval, _ := time.ParseDuration("1s")
@@ -162,14 +166,14 @@ func TestCircularProcData(t *testing.T) {
 		r.ClearCachedResources()
 		_, err := r.GetResource(pe, 1234)
 		if err != nil {
-			t.Fatal(err)
+			c.Fatal(err)
 		}
 	}
 	rh := r.getResourceHolder(pe)
 
 	// Assert we have what we expect.
-	assert.Equal(t, uint64(2886), rh.dataTimestamps[0].data)
-	assert.Equal(t, uint64(2888),
+	c.Check(uint64(2886), Equals, rh.dataTimestamps[0].data)
+	c.Check(uint64(2888), Equals,
 		rh.dataTimestamps[len(rh.dataTimestamps)-1].data)
 
 	// Now, make sure that we loop on the data slice.
@@ -180,13 +184,13 @@ func TestCircularProcData(t *testing.T) {
 	r.ClearCachedResources()
 	_, err := r.GetResource(pe, 1234)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
 	// Assert that we looped.
-	assert.Equal(t, uint64(2897), rh.dataTimestamps[0].data)
+	c.Check(uint64(2897), Equals, rh.dataTimestamps[0].data)
 }
 
-func TestDuration(t *testing.T) {
+func (s *ResourceSuite) TestDuration(c *C) {
 	Setup()
 	duration, _ := time.ParseDuration("3s")
 	interval, _ := time.ParseDuration("1s")
@@ -204,7 +208,7 @@ func TestDuration(t *testing.T) {
 		r.ClearCachedResources()
 		_, err := r.GetResource(pe, 1234)
 		if err != nil {
-			t.Fatal(err)
+			c.Fatal(err)
 		}
 	}
 	rh := r.getResourceHolder(pe)
@@ -220,16 +224,16 @@ func TestDuration(t *testing.T) {
 	r.ClearCachedResources()
 	resourceVal, err := r.GetResource(pe, 1234)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
 	timeDiff := float64(rh.dataTimestamps[2].nanoTimestamp-
 		rh.dataTimestamps[0].nanoTimestamp) / NANO_TO_MILLI
 	valDiff := rh.dataTimestamps[2].data - rh.dataTimestamps[0].data
 	expectedPercent := uint64(100 * (float64(valDiff) / float64(timeDiff)))
-	assert.Equal(t, expectedPercent, resourceVal)
+	c.Check(expectedPercent, Equals, resourceVal)
 }
 
-func TestCleanProcData(t *testing.T) {
+func (s *ResourceSuite) TestCleanProcData(c *C) {
 	Setup()
 	dts := &DataTimestamp{
 		data:          1,
@@ -243,9 +247,9 @@ func TestCleanProcData(t *testing.T) {
 	}
 	proc := &Process{Name: "process"}
 	r.resourceHolders = append(r.resourceHolders, rh)
-	assert.Equal(t, 1, len(r.resourceHolders[0].dataTimestamps))
-	assert.Equal(t, int64(1), r.resourceHolders[0].firstEntryIndex)
+	c.Check(1, Equals, len(r.resourceHolders[0].dataTimestamps))
+	c.Check(int64(1), Equals, r.resourceHolders[0].firstEntryIndex)
 	r.CleanDataForProcess(proc)
-	assert.Equal(t, 0, len(r.resourceHolders[0].dataTimestamps))
-	assert.Equal(t, int64(0), r.resourceHolders[0].firstEntryIndex)
+	c.Check(0, Equals, len(r.resourceHolders[0].dataTimestamps))
+	c.Check(int64(0), Equals, r.resourceHolders[0].firstEntryIndex)
 }

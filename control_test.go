@@ -4,12 +4,15 @@ package gonit_test
 
 import (
 	"fmt"
-	"github.com/bmizerany/assert"
 	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
+	. "launchpad.net/gocheck"
 	"os"
-	"testing"
 )
+
+type ControlSuite struct{}
+
+var _ = Suite(&ControlSuite{})
 
 var groupName = "controlTest"
 
@@ -27,50 +30,50 @@ func (fem *FakeEventMonitor) Start(configManager *ConfigManager,
 
 func (fem *FakeEventMonitor) Stop() {}
 
-func TestActions(t *testing.T) {
+func (s *ControlSuite) TestActions(c *C) {
 	fem := &FakeEventMonitor{}
 	configManager := &ConfigManager{Settings: &Settings{}}
-	c := &Control{ConfigManager: configManager, EventMonitor: fem}
+	ctl := &Control{ConfigManager: configManager, EventMonitor: fem}
 
 	name := "simple"
 	process := helper.NewTestProcess(name, nil, false)
 	defer helper.Cleanup(process)
 
-	err := c.Config().AddProcess(groupName, process)
-	assert.Equal(t, nil, err)
-	assert.Equal(t, MONITOR_NOT, c.State(process).Monitor)
-	assert.Equal(t, 0, c.State(process).Starts)
+	err := ctl.Config().AddProcess(groupName, process)
+	c.Check(err, IsNil)
+	c.Check(MONITOR_NOT, Equals, ctl.State(process).Monitor)
+	c.Check(0, Equals, ctl.State(process).Starts)
 
-	rv := c.DoAction(name, ACTION_START)
-	assert.Equal(t, 1, fem.numStartMonitoringCalled)
-	assert.Equal(t, nil, rv)
+	rv := ctl.DoAction(name, ACTION_START)
+	c.Check(1, Equals, fem.numStartMonitoringCalled)
+	c.Check(rv, IsNil)
 
-	assert.Equal(t, MONITOR_INIT, c.State(process).Monitor)
-	assert.Equal(t, 1, c.State(process).Starts)
+	c.Check(MONITOR_INIT, Equals, ctl.State(process).Monitor)
+	c.Check(1, Equals, ctl.State(process).Starts)
 
-	assert.Equal(t, true, process.IsRunning())
+	c.Check(true, Equals, process.IsRunning())
 
-	rv = c.DoAction(name, ACTION_RESTART)
-	assert.Equal(t, 2, fem.numStartMonitoringCalled)
-	assert.Equal(t, nil, rv)
+	rv = ctl.DoAction(name, ACTION_RESTART)
+	c.Check(2, Equals, fem.numStartMonitoringCalled)
+	c.Check(rv, IsNil)
 
-	assert.Equal(t, 2, c.State(process).Starts)
+	c.Check(2, Equals, ctl.State(process).Starts)
 
-	rv = c.DoAction(name, ACTION_STOP)
-	assert.Equal(t, nil, rv)
+	rv = ctl.DoAction(name, ACTION_STOP)
+	c.Check(rv, IsNil)
 
-	assert.Equal(t, MONITOR_NOT, c.State(process).Monitor)
+	c.Check(MONITOR_NOT, Equals, ctl.State(process).Monitor)
 
-	rv = c.DoAction(name, ACTION_MONITOR)
-	assert.Equal(t, 3, fem.numStartMonitoringCalled)
-	assert.Equal(t, nil, rv)
+	rv = ctl.DoAction(name, ACTION_MONITOR)
+	c.Check(3, Equals, fem.numStartMonitoringCalled)
+	c.Check(rv, IsNil)
 
-	assert.Equal(t, MONITOR_INIT, c.State(process).Monitor)
+	c.Check(MONITOR_INIT, Equals, ctl.State(process).Monitor)
 }
 
-func TestDepends(t *testing.T) {
+func (s *ControlSuite) TestDepends(c *C) {
 	configManager := &ConfigManager{Settings: &Settings{}}
-	c := &Control{ConfigManager: configManager, EventMonitor: &FakeEventMonitor{}}
+	ctl := &Control{ConfigManager: configManager, EventMonitor: &FakeEventMonitor{}}
 
 	name := "depsimple"
 	process := helper.NewTestProcess(name, nil, false)
@@ -84,8 +87,8 @@ func TestDepends(t *testing.T) {
 		dprocess := helper.NewTestProcess(dname, nil, false)
 		defer helper.Cleanup(dprocess)
 
-		err := c.Config().AddProcess(groupName, dprocess)
-		assert.Equal(t, nil, err)
+		err := ctl.Config().AddProcess(groupName, dprocess)
+		c.Check(err, IsNil)
 		if i%2 == 0 {
 			process.DependsOn = append(process.DependsOn, dname)
 		} else {
@@ -93,98 +96,98 @@ func TestDepends(t *testing.T) {
 		}
 	}
 
-	err := c.Config().AddProcess(groupName, process)
-	assert.Equal(t, nil, err)
+	err := ctl.Config().AddProcess(groupName, process)
+	c.Check(err, IsNil)
 
 	// start main process
-	rv := c.DoAction(name, ACTION_START)
-	assert.Equal(t, nil, rv)
+	rv := ctl.DoAction(name, ACTION_START)
+	c.Check(rv, IsNil)
 
-	assert.Equal(t, true, process.IsRunning())
+	c.Check(true, Equals, process.IsRunning())
 
 	// stop main process
-	rv = c.DoAction(name, ACTION_STOP)
-	assert.Equal(t, nil, rv)
-	assert.Equal(t, false, process.IsRunning())
+	rv = ctl.DoAction(name, ACTION_STOP)
+	c.Check(rv, IsNil)
+	c.Check(false, Equals, process.IsRunning())
 
 	// save pids to verify deps are not restarted
 	var dpids = make([]int, len(process.DependsOn))
 
 	// dependencies should still be running
 	for i, dname := range process.DependsOn {
-		dprocess, _ := c.Config().FindProcess(dname)
-		assert.Equal(t, true, dprocess.IsRunning())
+		dprocess, _ := ctl.Config().FindProcess(dname)
+		c.Check(true, Equals, dprocess.IsRunning())
 		dpids[i], err = dprocess.Pid()
-		assert.Equal(t, nil, err)
+		c.Check(err, IsNil)
 	}
 
 	// check start count for main process and deps
 
-	assert.Equal(t, 1, c.State(process).Starts)
+	c.Check(1, Equals, ctl.State(process).Starts)
 
 	for _, dname := range process.DependsOn {
-		dprocess, _ := c.Config().FindProcess(dname)
-		assert.NotEqual(t, nil, dprocess)
-		assert.Equal(t, 1, c.State(dprocess).Starts)
+		dprocess, _ := ctl.Config().FindProcess(dname)
+		c.Check(dprocess, NotNil)
+		c.Check(1, Equals, ctl.State(dprocess).Starts)
 	}
 
 	// other processes should not have been started
 	for _, oname := range oprocesses {
-		oprocess, _ := c.Config().FindProcess(oname)
-		assert.NotEqual(t, nil, oprocess)
-		assert.Equal(t, 0, c.State(oprocess).Starts)
+		oprocess, _ := ctl.Config().FindProcess(oname)
+		c.Check(oprocess, NotNil)
+		c.Check(0, Equals, ctl.State(oprocess).Starts)
 	}
 
 	// test start/stop of dependant
 
 	// start main sevice
-	rv = c.DoAction(name, ACTION_START)
-	assert.Equal(t, nil, rv)
-	assert.Equal(t, true, process.IsRunning())
-	assert.Equal(t, 2, c.State(process).Starts)
+	rv = ctl.DoAction(name, ACTION_START)
+	c.Check(rv, IsNil)
+	c.Check(true, Equals, process.IsRunning())
+	c.Check(2, Equals, ctl.State(process).Starts)
 
 	// dependencies should still be running w/ same pids
 	for i, dname := range process.DependsOn {
-		dprocess, _ := c.Config().FindProcess(dname)
-		assert.Equal(t, true, dprocess.IsRunning())
+		dprocess, _ := ctl.Config().FindProcess(dname)
+		c.Check(true, Equals, dprocess.IsRunning())
 		pid, err := dprocess.Pid()
-		assert.Equal(t, nil, err)
-		assert.Equal(t, dpids[i], pid)
+		c.Check(err, IsNil)
+		c.Check(dpids[i], Equals, pid)
 	}
 
 	// stop a dependency
-	rv = c.DoAction(process.DependsOn[0], ACTION_STOP)
-	assert.Equal(t, nil, rv)
+	rv = ctl.DoAction(process.DependsOn[0], ACTION_STOP)
+	c.Check(rv, IsNil)
 
 	// dependent will also stop
-	assert.Equal(t, false, process.IsRunning())
+	c.Check(false, Equals, process.IsRunning())
 
 	// start a dependency
-	rv = c.DoAction(process.DependsOn[0], ACTION_START)
-	assert.Equal(t, nil, rv)
+	rv = ctl.DoAction(process.DependsOn[0], ACTION_START)
+	c.Check(rv, IsNil)
 
 	// main process will come back up
-	assert.Equal(t, true, process.IsRunning())
+	c.Check(true, Equals, process.IsRunning())
 
-	c.DoAction(process.Name, ACTION_STOP)
+	ctl.DoAction(process.Name, ACTION_STOP)
 
-	assert.Equal(t, 3, c.State(process).Starts)
+	c.Check(3, Equals, ctl.State(process).Starts)
 
-	assert.Equal(t, MONITOR_NOT, c.State(process).Monitor)
+	c.Check(MONITOR_NOT, Equals, ctl.State(process).Monitor)
 
 	// stop all dependencies
 	for _, dname := range process.DependsOn {
-		c.DoAction(dname, ACTION_STOP)
+		ctl.DoAction(dname, ACTION_STOP)
 	}
 
 	// verify every process has been stopped
-	c.Config().VisitProcesses(func(p *Process) bool {
-		assert.Equal(t, false, p.IsRunning())
+	ctl.Config().VisitProcesses(func(p *Process) bool {
+		c.Check(false, Equals, p.IsRunning())
 		return true
 	})
 }
 
-func TestLoadPersistState(t *testing.T) {
+func (s *ControlSuite) TestLoadPersistState(c *C) {
 	configManager := &ConfigManager{Settings: &Settings{}}
 	control := &Control{ConfigManager: configManager}
 	testPersistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
@@ -196,12 +199,12 @@ func TestLoadPersistState(t *testing.T) {
 	configManager.ProcessGroups = pgs
 	configManager.Settings.PersistFile = testPersistFile
 	control.LoadPersistState()
-	assert.NotEqual(t, nil, control.States["MyProcess"])
-	assert.Equal(t, 2, control.States["MyProcess"].Starts)
-	assert.Equal(t, 2, control.States["MyProcess"].Monitor)
+	c.Check(control.States["MyProcess"], NotNil)
+	c.Check(2, Equals, control.States["MyProcess"].Starts)
+	c.Check(2, Equals, control.States["MyProcess"].Monitor)
 }
 
-func TestPersistData(t *testing.T) {
+func (s *ControlSuite) TestPersistData(c *C) {
 	configManager := &ConfigManager{Settings: &Settings{}}
 	control := &Control{ConfigManager: configManager}
 	testPersistFile := os.Getenv("PWD") + "/test/config/test_persist_file.yml"
@@ -214,16 +217,15 @@ func TestPersistData(t *testing.T) {
 	configManager.ProcessGroups = pgs
 	configManager.Settings.PersistFile = testPersistFile
 	control.LoadPersistState()
-	var noState map[string]*ProcessState
-	assert.Equal(t, noState, control.States)
+	c.Check(control.States, IsNil)
 	processState := &ProcessState{Monitor: 0x2, Starts: 3}
 	states := map[string]*ProcessState{}
 	states["MyProcess"] = processState
 	err := control.PersistStates(states)
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 	err = control.LoadPersistState()
-	assert.Equal(t, nil, err)
-	assert.NotEqual(t, nil, control.States["MyProcess"])
-	assert.Equal(t, 3, control.States["MyProcess"].Starts)
-	assert.Equal(t, 2, control.States["MyProcess"].Monitor)
+	c.Check(err, IsNil)
+	c.Check(control.States["MyProcess"], NotNil)
+	c.Check(3, Equals, control.States["MyProcess"].Starts)
+	c.Check(2, Equals, control.States["MyProcess"].Monitor)
 }

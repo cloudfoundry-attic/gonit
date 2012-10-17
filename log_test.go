@@ -3,17 +3,20 @@
 package gonit
 
 import (
-	"github.com/bmizerany/assert"
 	"io/ioutil"
+	. "launchpad.net/gocheck"
 	"os"
-	"testing"
 )
 
 func reInitLogger() {
 	(&LoggerConfig{}).Init() // reset to defaults
 }
 
-func TestLogInit(t *testing.T) {
+type LogSuite struct{}
+
+var _ = Suite(&LogSuite{})
+
+func (s *LogSuite) TestLogInit(c *C) {
 	defer reInitLogger()
 
 	config := &LoggerConfig{
@@ -21,14 +24,13 @@ func TestLogInit(t *testing.T) {
 	}
 
 	err := config.Init()
-	assert.Equal(t, nil, err)
-	var empty *os.File
-	assert.Equal(t, empty, config.file)
+	c.Check(err, IsNil)
+	c.Check(config.file, IsNil)
 	err = config.Close()
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 }
 
-func TestInvalidLogLevel(t *testing.T) {
+func (s *LogSuite) TestInvalidLogLevel(c *C) {
 	defer reInitLogger()
 
 	config := &LoggerConfig{
@@ -36,14 +38,14 @@ func TestInvalidLogLevel(t *testing.T) {
 	}
 
 	err := config.Init()
-	assert.NotEqual(t, nil, err)
+	c.Check(err, NotNil)
 }
 
-func TestLogFile(t *testing.T) {
+func (s *LogSuite) TestLogFile(c *C) {
 	defer reInitLogger()
 
 	file, err := ioutil.TempFile("", "gonit_log")
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 	defer os.Remove(file.Name())
 
 	config := &LoggerConfig{
@@ -52,30 +54,30 @@ func TestLogFile(t *testing.T) {
 	}
 
 	err = config.Init()
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	fi, err := os.Stat(config.FileName)
-	assert.Equal(t, nil, err)
-	assert.Equal(t, fi.Size(), int64(0))
+	c.Check(err, IsNil)
+	c.Check(fi.Size(), Equals, int64(0))
 
 	// info message should be written to the log file
 	Log.Info("testing")
 	fi, err = os.Stat(config.FileName)
-	assert.Equal(t, nil, err)
-	assert.NotEqual(t, fi.Size(), int64(0))
+	c.Check(err, IsNil)
+	c.Check(fi.Size(), Not(Equals), int64(0))
 
 	// info message should not
 	Log.Debug("another test")
 	fi2, err := os.Stat(config.FileName)
-	assert.Equal(t, nil, err)
-	assert.Equal(t, fi.Size(), fi2.Size())
+	c.Check(err, IsNil)
+	c.Check(fi.Size(), Equals, fi2.Size())
 
 	err = config.Close()
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	// make log file read-only and check Init returns an error
 	err = os.Chmod(config.FileName, 0444)
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 	err = config.Init()
-	assert.NotEqual(t, nil, err)
+	c.Check(err, NotNil)
 }

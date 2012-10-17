@@ -3,17 +3,20 @@
 package gonit_test
 
 import (
-	"github.com/bmizerany/assert"
 	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
+	. "launchpad.net/gocheck"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"testing"
 	"time"
 )
+
+type ProcessSuite struct{}
+
+var _ = Suite(&ProcessSuite{})
 
 // absolute path to the json encoded helper.ProcessInfo
 // written by goprocess, read by the following Tests.
@@ -29,7 +32,7 @@ func processInfo(p *Process) *helper.ProcessInfo {
 }
 
 // these assertions apply to any daemon process
-func assertProcessInfo(t *testing.T, process *Process, info *helper.ProcessInfo) {
+func assertProcessInfo(c *C, process *Process, info *helper.ProcessInfo) {
 	selfInfo := helper.CurrentProcessInfo()
 	var ppid int
 
@@ -39,47 +42,47 @@ func assertProcessInfo(t *testing.T, process *Process, info *helper.ProcessInfo)
 		ppid = selfInfo.Pid
 	}
 
-	assert.Equal(t, ppid, info.Ppid) // parent pid
+	c.Check(ppid, Equals, info.Ppid) // parent pid
 
-	assert.NotEqual(t, selfInfo.Pgrp, info.Pgrp) // process group will change
+	c.Check(selfInfo.Pgrp, Not(Equals), info.Pgrp) // process group will change
 
-	assert.NotEqual(t, selfInfo.Sid, info.Sid) // session id will change
+	c.Check(selfInfo.Sid, Not(Equals), info.Sid) // session id will change
 
-	assert.Equal(t, false, info.HasTty) // no controling terminal
+	c.Check(false, Equals, info.HasTty) // no controling terminal
 
 	sort.Strings(selfInfo.Env)
 	sort.Strings(info.Env)
-	assert.NotEqual(t, selfInfo.Env, info.Env) // sanitized env will differ
+	c.Check(selfInfo.Env, Not(DeepEquals), info.Env) // sanitized env will differ
 
 	// check expected process working directory
 	// (and follow symlinks, e.g. darwin)
 	ddir, _ := filepath.EvalSymlinks(process.Dir)
 	idir, _ := filepath.EvalSymlinks(info.Dir)
-	assert.Equal(t, ddir, idir)
+	c.Check(ddir, Equals, idir)
 
 	// spawned process argv[] should be the same as the process.Start command
-	assert.Equal(t, process.Start, strings.Join(info.Args, " "))
+	c.Check(process.Start, Equals, strings.Join(info.Args, " "))
 
 	// check when configured to run as different user and/or group
 	if process.Uid == "" {
-		assert.Equal(t, selfInfo.Uid, info.Uid)
-		assert.Equal(t, selfInfo.Euid, info.Euid)
+		c.Check(selfInfo.Uid, Equals, info.Uid)
+		c.Check(selfInfo.Euid, Equals, info.Euid)
 	} else {
-		assert.NotEqual(t, selfInfo.Uid, info.Uid)
-		assert.NotEqual(t, selfInfo.Euid, info.Euid)
+		c.Check(selfInfo.Uid, Not(Equals), info.Uid)
+		c.Check(selfInfo.Euid, Not(Equals), info.Euid)
 	}
 
 	if process.Gid == "" {
 		if process.Uid == "" {
-			assert.Equal(t, selfInfo.Gid, info.Gid)
-			assert.Equal(t, selfInfo.Egid, info.Egid)
+			c.Check(selfInfo.Gid, Equals, info.Gid)
+			c.Check(selfInfo.Egid, Equals, info.Egid)
 		} else {
-			assert.NotEqual(t, selfInfo.Gid, info.Gid)
-			assert.NotEqual(t, selfInfo.Egid, info.Egid)
+			c.Check(selfInfo.Gid, Not(Equals), info.Gid)
+			c.Check(selfInfo.Egid, Not(Equals), info.Egid)
 		}
 	} else {
-		assert.NotEqual(t, selfInfo.Gid, info.Gid)
-		assert.NotEqual(t, selfInfo.Egid, info.Egid)
+		c.Check(selfInfo.Gid, Not(Equals), info.Gid)
+		c.Check(selfInfo.Egid, Not(Equals), info.Egid)
 	}
 }
 
@@ -90,7 +93,7 @@ func pause() {
 }
 
 // start + stop of gonit daemonized process
-func TestSimple(t *testing.T) {
+func (s *ProcessSuite) TestSimple(c *C) {
 	process := helper.NewTestProcess("simple", nil, false)
 	defer helper.Cleanup(process)
 
@@ -101,28 +104,36 @@ func TestSimple(t *testing.T) {
 
 	pause()
 
-	assert.Equal(t, true, process.IsRunning())
+	c.Check(true, Equals, process.IsRunning())
 
 	info := processInfo(process)
 
 	if process.Detached {
-		assert.Equal(t, true, grandArgs(info.Args))
+		c.Check(true, Equals, grandArgs(info.Args))
 	} else {
-		assert.Equal(t, pid, info.Pid)
+		c.Check(pid, Equals, info.Pid)
 	}
-	assertProcessInfo(t, process, info)
+	assertProcessInfo(c, process, info)
 
 	err = process.StopProcess()
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	pause()
 
-	assert.Equal(t, false, process.IsRunning())
+	c.Check(false, Equals, process.IsRunning())
+}
+
+func skipUnlessRoot(c *C) bool {
+	if os.Getuid() != 0 {
+		c.Skip("test must be run as root")
+		return true
+	}
+	return false
 }
 
 // start + stop of gonit daemonized process w/ setuid
-func TestSimpleSetuid(t *testing.T) {
-	if helper.NotRoot() {
+func (s *ProcessSuite) TestSimpleSetuid(c *C) {
+	if skipUnlessRoot(c) {
 		return
 	}
 
@@ -136,23 +147,23 @@ func TestSimpleSetuid(t *testing.T) {
 
 	pid, err := process.StartProcess()
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
 
 	pause()
 
-	assert.Equal(t, true, process.IsRunning())
+	c.Check(true, Equals, process.IsRunning())
 
 	info := processInfo(process)
-	assertProcessInfo(t, process, info)
-	assert.Equal(t, pid, info.Pid)
+	assertProcessInfo(c, process, info)
+	c.Check(pid, Equals, info.Pid)
 
 	err = process.StopProcess()
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	pause()
 
-	assert.Equal(t, false, process.IsRunning())
+	c.Check(false, Equals, process.IsRunning())
 }
 
 // check that -F flag has been rewritten to -G
@@ -169,7 +180,7 @@ func grandArgs(args []string) bool {
 }
 
 // start / restart / stop self-daemonized process
-func TestDetached(t *testing.T) {
+func (s *ProcessSuite) TestDetached(c *C) {
 	// start process
 	process := helper.NewTestProcess("detached", nil, true)
 	defer helper.Cleanup(process)
@@ -181,42 +192,42 @@ func TestDetached(t *testing.T) {
 
 	pause()
 
-	assert.Equal(t, true, process.IsRunning())
+	c.Check(true, Equals, process.IsRunning())
 
 	info := processInfo(process)
 
-	assert.Equal(t, true, grandArgs(info.Args))
-	assertProcessInfo(t, process, info)
-	assert.NotEqual(t, pid, info.Pid)
+	c.Check(true, Equals, grandArgs(info.Args))
+	assertProcessInfo(c, process, info)
+	c.Check(pid, Not(Equals), info.Pid)
 	pid, err = process.Pid()
 	if err != nil {
 		log.Fatal(err)
 	}
-	assert.Equal(t, pid, info.Pid)
+	c.Check(pid, Equals, info.Pid)
 
 	// restart via SIGHUP
 	prevPid := info.Pid
 
-	assert.Equal(t, 0, info.Restarts)
+	c.Check(0, Equals, info.Restarts)
 
 	for i := 1; i < 3; i++ {
 		err = process.RestartProcess()
 
 		pause()
-		assert.Equal(t, true, process.IsRunning())
+		c.Check(true, Equals, process.IsRunning())
 
 		pid, err = process.Pid()
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		assert.Equal(t, prevPid, pid)
+		c.Check(prevPid, Equals, pid)
 		info = processInfo(process)
-		assert.Equal(t, true, grandArgs(info.Args))
-		assertProcessInfo(t, process, info)
+		c.Check(true, Equals, grandArgs(info.Args))
+		assertProcessInfo(c, process, info)
 
 		// SIGHUP increments restarts counter
-		assert.Equal(t, i, info.Restarts)
+		c.Check(i, Equals, info.Restarts)
 	}
 
 	// restart via full stop+start
@@ -227,29 +238,29 @@ func TestDetached(t *testing.T) {
 	err = process.RestartProcess()
 
 	pause()
-	assert.Equal(t, true, process.IsRunning())
+	c.Check(true, Equals, process.IsRunning())
 
 	pid, err = process.Pid()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	assert.NotEqual(t, prevPid, pid)
+	c.Check(prevPid, Not(Equals), pid)
 	info = processInfo(process)
-	assert.Equal(t, true, grandArgs(info.Args))
-	assertProcessInfo(t, process, info)
+	c.Check(true, Equals, grandArgs(info.Args))
+	assertProcessInfo(c, process, info)
 
 	err = process.StopProcess()
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	pause()
 
-	assert.Equal(t, false, process.IsRunning())
+	c.Check(false, Equals, process.IsRunning())
 }
 
 // test invalid uid
-func TestFailSetuid(t *testing.T) {
-	if helper.NotRoot() {
+func (s *ProcessSuite) TestFailSetuid(c *C) {
+	if skipUnlessRoot(c) {
 		return
 	}
 
@@ -260,16 +271,16 @@ func TestFailSetuid(t *testing.T) {
 
 	_, err := process.StartProcess()
 	if err == nil {
-		t.Fatalf("user.LookupId(%q) should have failed", process.Uid)
+		c.Fatalf("user.LookupId(%q) should have failed", process.Uid)
 	}
 
 	pause()
 
-	assert.Equal(t, false, process.IsRunning())
+	c.Check(false, Equals, process.IsRunning())
 }
 
 // test invalid executable
-func TestFailExe(t *testing.T) {
+func (s *ProcessSuite) TestFailExe(c *C) {
 	process := helper.NewTestProcess("fail_exe", nil, false)
 	defer helper.Cleanup(process)
 
@@ -279,9 +290,9 @@ func TestFailExe(t *testing.T) {
 	}
 
 	_, err = process.StartProcess()
-	assert.NotEqual(t, nil, err)
+	c.Check(err, NotNil)
 
 	pause()
 
-	assert.Equal(t, false, process.IsRunning())
+	c.Check(false, Equals, process.IsRunning())
 }

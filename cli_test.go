@@ -4,12 +4,15 @@ package gonit_test
 
 import (
 	"fmt"
-	"github.com/bmizerany/assert"
 	. "github.com/cloudfoundry/gonit"
 	"github.com/cloudfoundry/gonit/test/helper"
+	. "launchpad.net/gocheck"
 	"net/rpc"
-	"testing"
 )
+
+type CliSuite struct{}
+
+var _ = Suite(&CliSuite{})
 
 var mockAPI = &MockAPI{api: &API{}}
 
@@ -44,49 +47,49 @@ func (m *MockAPI) About(args interface{}, about *About) error {
 }
 
 // run tests via RPC or local reflection
-func runTests(t *testing.T, client CliClient) {
+func runTests(c *C, client CliClient) {
 	method, name := RpcArgs("stop", "foo", false)
 	_, err := client.Call(method, name)
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	method, name = RpcArgs("stop", "bar", false)
 	_, err = client.Call(method, name)
-	assert.NotEqual(t, nil, err)
+	c.Check(err, NotNil)
 
 	method, name = RpcArgs("unmonitor", "all", false)
 	_, err = client.Call(method, name)
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	method, name = RpcArgs("start", "vcap", true)
 	_, err = client.Call(method, name)
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	method, name = RpcArgs("start", "bar", true)
 	_, err = client.Call(method, name)
-	assert.NotEqual(t, nil, err)
+	c.Check(err, NotNil)
 
 	method, name = RpcArgs("about", "", false)
 	reply, err := client.Call(method, name)
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 
 	about, ok := reply.(*About)
-	assert.Equal(t, true, ok)
-	assert.Equal(t, VERSION, about.Version)
+	c.Check(true, Equals, ok)
+	c.Check(VERSION, Equals, about.Version)
 
 	reply, err = client.Call("ENOENT", "")
-	assert.NotEqual(t, nil, err)
+	c.Check(err, NotNil)
 }
 
-func TestRemote(t *testing.T) {
-	err := helper.WithRpcServer(func(c *rpc.Client) {
-		client := NewRemoteClient(c, mockAPI)
-		runTests(t, client)
+func (s *CliSuite) TestRemote(c *C) {
+	err := helper.WithRpcServer(func(rc *rpc.Client) {
+		client := NewRemoteClient(rc, mockAPI)
+		runTests(c, client)
 	})
 
-	assert.Equal(t, nil, err)
+	c.Check(err, IsNil)
 }
 
-func TestLocal(t *testing.T) {
+func (s *CliSuite) TestLocal(c *C) {
 	client := NewLocalClient(mockAPI)
-	runTests(t, client)
+	runTests(c, client)
 }

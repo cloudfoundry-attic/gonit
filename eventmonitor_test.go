@@ -3,9 +3,12 @@
 package gonit
 
 import (
-	"github.com/bmizerany/assert"
-	"testing"
+	. "launchpad.net/gocheck"
 )
+
+type EventSuite struct{}
+
+var _ = Suite(&EventSuite{})
 
 var eventMonitor EventMonitor
 
@@ -21,32 +24,32 @@ func RegisterNewFakeControl() *FakeControl {
 	return fc
 }
 
-func TestIsAnOperatorChar(t *testing.T) {
-	assert.Equal(t, true, isAnOperatorChar("="))
-	assert.Equal(t, true, isAnOperatorChar(">"))
-	assert.Equal(t, true, isAnOperatorChar("<"))
-	assert.Equal(t, false, isAnOperatorChar("!="))
-	assert.Equal(t, false, isAnOperatorChar("=="))
+func (s *EventSuite) TestIsAnOperatorChar(c *C) {
+	c.Check(true, Equals, isAnOperatorChar("="))
+	c.Check(true, Equals, isAnOperatorChar(">"))
+	c.Check(true, Equals, isAnOperatorChar("<"))
+	c.Check(false, Equals, isAnOperatorChar("!="))
+	c.Check(false, Equals, isAnOperatorChar("=="))
 }
 
-func TestCompareUint64(t *testing.T) {
+func (s *EventSuite) TestCompareUint64(c *C) {
 	sixty := uint64(60)
 	fiftyNine := uint64(59)
-	assert.Equal(t, true, compareUint64(sixty, EQ_OPERATOR, 60))
-	assert.Equal(t, false, compareUint64(sixty, EQ_OPERATOR, 61))
+	c.Check(true, Equals, compareUint64(sixty, EQ_OPERATOR, 60))
+	c.Check(false, Equals, compareUint64(sixty, EQ_OPERATOR, 61))
 
-	assert.Equal(t, true, compareUint64(sixty, NEQ_OPERATOR, 50))
+	c.Check(true, Equals, compareUint64(sixty, NEQ_OPERATOR, 50))
 
-	assert.Equal(t, false, compareUint64(sixty, LT_OPERATOR, 50))
-	assert.Equal(t, false, compareUint64(sixty, LT_OPERATOR, 60))
-	assert.Equal(t, true, compareUint64(fiftyNine, LT_OPERATOR, 60))
+	c.Check(false, Equals, compareUint64(sixty, LT_OPERATOR, 50))
+	c.Check(false, Equals, compareUint64(sixty, LT_OPERATOR, 60))
+	c.Check(true, Equals, compareUint64(fiftyNine, LT_OPERATOR, 60))
 
-	assert.Equal(t, true, compareUint64(sixty, GT_OPERATOR, 50))
-	assert.Equal(t, false, compareUint64(sixty, GT_OPERATOR, 60))
-	assert.Equal(t, false, compareUint64(fiftyNine, GT_OPERATOR, 60))
+	c.Check(true, Equals, compareUint64(sixty, GT_OPERATOR, 50))
+	c.Check(false, Equals, compareUint64(sixty, GT_OPERATOR, 60))
+	c.Check(false, Equals, compareUint64(fiftyNine, GT_OPERATOR, 60))
 }
 
-func TestCheckRuleUint(t *testing.T) {
+func (s *EventSuite) TestCheckRuleUint(c *C) {
 	parsedEvent := &ParsedEvent{
 		operator:     EQ_OPERATOR,
 		ruleAmount:   uint64(7),
@@ -54,10 +57,10 @@ func TestCheckRuleUint(t *testing.T) {
 	}
 	resourceVal := uint64(7)
 	triggering := checkRule(parsedEvent, resourceVal)
-	assert.Equal(t, true, triggering)
+	c.Check(true, Equals, triggering)
 }
 
-func TestCheckRuleFalseUint(t *testing.T) {
+func (s *EventSuite) TestCheckRuleFalseUint(c *C) {
 	parsedEvent := &ParsedEvent{
 		operator:     EQ_OPERATOR,
 		ruleAmount:   uint64(8),
@@ -65,72 +68,73 @@ func TestCheckRuleFalseUint(t *testing.T) {
 	}
 	resourceVal := uint64(7)
 	triggering := checkRule(parsedEvent, resourceVal)
-	assert.Equal(t, false, triggering)
+	c.Check(false, Equals, triggering)
 }
 
-func TestParseRuleForwards(t *testing.T) {
+func (s *EventSuite) TestParseRuleForwards(c *C) {
 	ruleAmount, operator, resourceName, err :=
 		eventMonitor.parseRule("memory_used==2gb")
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount)
-	assert.Equal(t, EQ_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	c.Check(TWO_GB, Equals, ruleAmount)
+	c.Check(EQ_OPERATOR, Equals, operator)
+	c.Check("memory_used", Equals, resourceName)
 }
 
-func TestParseRuleBackwards(t *testing.T) {
+func (s *EventSuite) TestParseRuleBackwards(c *C) {
 	ruleAmount, operator, resourceName, err :=
 		eventMonitor.parseRule("2gb==memory_used")
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount)
-	assert.Equal(t, EQ_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	c.Check(TWO_GB, Equals, ruleAmount)
+	c.Check(EQ_OPERATOR, Equals, operator)
+	c.Check("memory_used", Equals, resourceName)
 }
 
-func TestParseRuleSpaces(t *testing.T) {
+func (s *EventSuite) TestParseRuleSpaces(c *C) {
 	ruleAmount, operator, resourceName, err :=
 		eventMonitor.parseRule("  2gb   ==  memory_used   ")
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount)
-	assert.Equal(t, EQ_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	c.Check(TWO_GB, Equals, ruleAmount)
+	c.Check(EQ_OPERATOR, Equals, operator)
+	c.Check("memory_used", Equals, resourceName)
 }
 
-func TestParseRuleGt(t *testing.T) {
+func (s *EventSuite) TestParseRuleGt(c *C) {
 	ruleAmount, operator, resourceName, err :=
 		eventMonitor.parseRule("2gb>memory_used")
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount)
-	assert.Equal(t, GT_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	c.Check(TWO_GB, Equals, ruleAmount)
+	c.Check(GT_OPERATOR, Equals, operator)
+	c.Check("memory_used", Equals, resourceName)
 }
 
-func TestParseRuleLt(t *testing.T) {
+func (s *EventSuite) TestParseRuleLt(c *C) {
 	ruleAmount, operator, resourceName, err :=
 		eventMonitor.parseRule("2gb<memory_used")
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, TWO_GB, ruleAmount)
-	assert.Equal(t, LT_OPERATOR, operator)
-	assert.Equal(t, "memory_used", resourceName)
+	c.Check(TWO_GB, Equals, ruleAmount)
+	c.Check(LT_OPERATOR, Equals, operator)
+	c.Check("memory_used", Equals, resourceName)
 }
 
-func TestParseRuleInvalidResourceError(t *testing.T) {
+func (s *EventSuite) TestParseRuleInvalidResourceError(c *C) {
 	_, _, _, err :=
 		eventMonitor.parseRule("2gb<invalid_resource")
-	assert.Equal(t, "Using invalid resource name in rule '2gb<invalid_resource'.",
+	c.Check("Using invalid resource name in rule '2gb<invalid_resource'.", Equals,
 		err.Error())
+
 }
 
-func TestParseEvent(t *testing.T) {
+func (s *EventSuite) TestParseEvent(c *C) {
 	event := Event{
 		Rule:        "memory_used>2gb",
 		Duration:    "10s",
@@ -140,14 +144,14 @@ func TestParseEvent(t *testing.T) {
 	parsedEvent, err :=
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "alert")
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, GT_OPERATOR, parsedEvent.operator)
-	assert.Equal(t, "memory_used", parsedEvent.resourceName)
-	assert.Equal(t, TWO_GB, parsedEvent.ruleAmount)
+	c.Check(GT_OPERATOR, Equals, parsedEvent.operator)
+	c.Check("memory_used", Equals, parsedEvent.resourceName)
+	c.Check(TWO_GB, Equals, parsedEvent.ruleAmount)
 }
 
-func TestParseBadIntervalEvents(t *testing.T) {
+func (s *EventSuite) TestParseBadIntervalEvents(c *C) {
 	event1 := Event{
 		Rule:        "memory_used>2gb",
 		Duration:    "8s",
@@ -163,15 +167,20 @@ func TestParseBadIntervalEvents(t *testing.T) {
 	_, err := eventMonitor.parseEvent(&event1, "GroupName", "ProcessName",
 		"alert")
 	if err != nil {
-		assert.Equal(t,
-			"Rule 'memory_used>2gb' duration / interval must be an integer.",
+		c.Check(
+			"Rule 'memory_used>2gb' duration / interval must be an integer.", Equals,
+
 			err.Error())
+
 	}
 	_, err = eventMonitor.parseEvent(&event2, "GroupName", "ProcessName", "alert")
 	if err != nil {
-		assert.Equal(t,
+		c.Check(
 			"Rule 'cpu_percent>60' duration / interval must be greater than 1.  It "+
-				"is '10 / 10'.", err.Error())
+				"is '10 / 10'.", Equals,
+
+			err.Error())
+
 	}
 }
 
@@ -191,7 +200,7 @@ func (fc *FakeControl) IsMonitoring(process *Process) bool {
 	return fc.isMonitoring
 }
 
-func TestActionTriggers(t *testing.T) {
+func (s *EventSuite) TestActionTriggers(c *C) {
 	fc := RegisterNewFakeControl()
 	fc.isMonitoring = true
 	eventMonitor.configManager = &ConfigManager{}
@@ -210,49 +219,51 @@ func TestActionTriggers(t *testing.T) {
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "stop")
 	err := eventMonitor.triggerAction(process, parsedEvent, 0)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, 1, fc.numDoActionCalled)
-	assert.Equal(t, ACTION_STOP, fc.lastActionCalled)
+	c.Check(1, Equals, fc.numDoActionCalled)
+	c.Check(ACTION_STOP, Equals, fc.lastActionCalled)
 
 	parsedEvent, _ =
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "start")
 	err = eventMonitor.triggerAction(process, parsedEvent, 0)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, 2, fc.numDoActionCalled)
-	assert.Equal(t, ACTION_START, fc.lastActionCalled)
+	c.Check(2, Equals, fc.numDoActionCalled)
+	c.Check(ACTION_START, Equals, fc.lastActionCalled)
 
 	parsedEvent, _ =
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "restart")
 	err = eventMonitor.triggerAction(process, parsedEvent, 0)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, 3, fc.numDoActionCalled)
-	assert.Equal(t, ACTION_RESTART, fc.lastActionCalled)
+	c.Check(3, Equals, fc.numDoActionCalled)
+	c.Check(ACTION_RESTART, Equals, fc.lastActionCalled)
 
 	parsedEvent, _ =
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "alert")
 	err = eventMonitor.triggerAction(process, parsedEvent, 0)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, 3, fc.numDoActionCalled)
+	c.Check(3, Equals, fc.numDoActionCalled)
 
 	_, err =
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "doesntexist")
-	assert.Equal(t, "No event action 'doesntexist' exists. Valid actions are "+
-		"[stop, start, restart, alert].", err.Error())
+	c.Check("No event action 'doesntexist' exists. Valid actions are "+
+		"[stop, start, restart, alert].", Equals,
+		err.Error())
+
 	parsedEvent.action = "doesntexist"
 	err = eventMonitor.triggerAction(process, parsedEvent, 0)
-	assert.Equal(t, "No event action 'doesntexist' exists.", err.Error())
+	c.Check("No event action 'doesntexist' exists.", Equals, err.Error())
 
 	eventMonitor = EventMonitor{}
 }
 
-func TestMonitoringModes(t *testing.T) {
+func (s *EventSuite) TestMonitoringModes(c *C) {
 	fc := RegisterNewFakeControl()
 	fc.isMonitoring = true
 	eventMonitor.configManager = &ConfigManager{}
@@ -271,10 +282,10 @@ func TestMonitoringModes(t *testing.T) {
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "stop")
 	err := eventMonitor.triggerAction(process, parsedEvent, 0)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, 1, fc.numDoActionCalled)
-	assert.Equal(t, ACTION_STOP, fc.lastActionCalled)
+	c.Check(1, Equals, fc.numDoActionCalled)
+	c.Check(ACTION_STOP, Equals, fc.lastActionCalled)
 
 	// We shoudn't trigger the action in passive mode.
 	process.MonitorMode = "passive"
@@ -282,10 +293,10 @@ func TestMonitoringModes(t *testing.T) {
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "start")
 	err = eventMonitor.triggerAction(process, parsedEvent, 0)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, 1, fc.numDoActionCalled)
-	assert.Equal(t, ACTION_STOP, fc.lastActionCalled)
+	c.Check(1, Equals, fc.numDoActionCalled)
+	c.Check(ACTION_STOP, Equals, fc.lastActionCalled)
 
 	// We shouldn't trigger the action in manual mode.
 	process.MonitorMode = "manual"
@@ -293,10 +304,10 @@ func TestMonitoringModes(t *testing.T) {
 		eventMonitor.parseEvent(&event, "GroupName", "ProcessName", "start")
 	err = eventMonitor.triggerAction(process, parsedEvent, 0)
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, 1, fc.numDoActionCalled)
-	assert.Equal(t, ACTION_STOP, fc.lastActionCalled)
+	c.Check(1, Equals, fc.numDoActionCalled)
+	c.Check(ACTION_STOP, Equals, fc.lastActionCalled)
 
 	eventMonitor = EventMonitor{}
 }

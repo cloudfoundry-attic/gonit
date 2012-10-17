@@ -148,14 +148,6 @@ func CopyFile(srcName, dstName string, mode os.FileMode) {
 	}
 }
 
-func NotRoot() bool {
-	if os.Getuid() == 0 {
-		return false
-	}
-	log.Println("SKIP: test must be run as root")
-	return true
-}
-
 func WithRpcServer(f func(c *rpc.Client)) error {
 	file, err := ioutil.TempFile("", "gonit-rpc")
 	if err != nil {

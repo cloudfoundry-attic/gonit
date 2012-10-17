@@ -3,83 +3,86 @@
 package gonit
 
 import (
-	"github.com/bmizerany/assert"
 	"io/ioutil"
+	. "launchpad.net/gocheck"
 	"os"
-	"testing"
 )
 
-func assertFileParsed(t *testing.T, configManager *ConfigManager) {
-	assert.Equal(t, 1, len(configManager.ProcessGroups))
+type ConfigSuite struct{}
+
+var _ = Suite(&ConfigSuite{})
+
+func assertFileParsed(c *C, configManager *ConfigManager) {
+	c.Check(1, Equals, len(configManager.ProcessGroups))
 	pg := configManager.ProcessGroups["dashboard"]
-	assert.NotEqual(t, ProcessGroup{}, pg)
-	assert.Equal(t, "dashboard", pg.Name)
+	c.Check(ProcessGroup{}, Not(Equals), pg)
+	c.Check("dashboard", Equals, pg.Name)
 
-	assert.Equal(t, 4, len(pg.Events))
+	c.Check(4, Equals, len(pg.Events))
 	opentsdb := pg.Processes["opentsdb"]
-	assert.NotEqual(t, Process{}, opentsdb)
+	c.Check(Process{}, Not(Equals), opentsdb)
 	dashboard := pg.Processes["dashboard"]
-	assert.NotEqual(t, Process{}, dashboard)
-	assert.Equal(t, 2, len(opentsdb.Actions["alert"]))
-	assert.Equal(t, 1, len(opentsdb.Actions["restart"]))
-	assert.Equal(t, 1, len(dashboard.Actions["alert"]))
-	assert.Equal(t, "memory_used > 5mb", pg.EventByName("memory_over_5").Rule)
-	assert.Equal(t, (*Event)(nil), pg.EventByName("blah"))
+	c.Check(Process{}, Not(Equals), dashboard)
+	c.Check(2, Equals, len(opentsdb.Actions["alert"]))
+	c.Check(1, Equals, len(opentsdb.Actions["restart"]))
+	c.Check(1, Equals, len(dashboard.Actions["alert"]))
+	c.Check("memory_used > 5mb", Equals, pg.EventByName("memory_over_5").Rule)
+	c.Check((*Event)(nil), Equals, pg.EventByName("blah"))
 
-	assert.Equal(t, "none", configManager.Settings.AlertTransport)
-	assert.NotEqual(t, "", configManager.Settings.RpcServerUrl)
-	assert.Equal(t, 0, configManager.Settings.PollInterval)
-	assert.NotEqual(t, nil, configManager.Settings.Daemon)
-	assert.Equal(t, "lolnit", configManager.Settings.Daemon.Name)
-	assert.NotEqual(t, nil, configManager.Settings.Logging)
-	assert.Equal(t, "debug", configManager.Settings.Logging.Level)
+	c.Check("none", Equals, configManager.Settings.AlertTransport)
+	c.Check("", Not(Equals), configManager.Settings.RpcServerUrl)
+	c.Check(0, Equals, configManager.Settings.PollInterval)
+	c.Check(configManager.Settings.Daemon, NotNil)
+	c.Check("lolnit", Equals, configManager.Settings.Daemon.Name)
+	c.Check(configManager.Settings.Logging, NotNil)
+	c.Check("debug", Equals, configManager.Settings.Logging.Level)
 }
 
-func TestGetPid(t *testing.T) {
+func (s *ConfigSuite) TestGetPid(c *C) {
 	file, err := ioutil.TempFile("", "pid")
 	if err != nil {
-		t.Error(err)
+		c.Error(err)
 	}
 	path := file.Name()
 	defer os.Remove(path)
 	if _, err := file.Write([]byte("1234")); err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
 	process := Process{Pidfile: file.Name()}
 	process.Pidfile = file.Name()
 	pid, err := process.Pid()
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, 1234, pid)
+	c.Check(1234, Equals, pid)
 }
 
-func TestParseDir(t *testing.T) {
+func (s *ConfigSuite) TestParseDir(c *C) {
 	configManager := &ConfigManager{}
 	err := configManager.LoadConfig("test/config/")
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assertFileParsed(t, configManager)
+	assertFileParsed(c, configManager)
 }
 
-func TestNoSettingsLoadsDefaults(t *testing.T) {
+func (s *ConfigSuite) TestNoSettingsLoadsDefaults(c *C) {
 	configManager := &ConfigManager{}
 	err := configManager.LoadConfig("test/config/dashboard-gonit.yml")
 	if err != nil {
-		t.Fatal(err)
+		c.Fatal(err)
 	}
-	assert.Equal(t, "none", configManager.Settings.AlertTransport)
+	c.Check("none", Equals, configManager.Settings.AlertTransport)
 }
 
-func TestLoadBadDir(t *testing.T) {
+func (s *ConfigSuite) TestLoadBadDir(c *C) {
 	configManager := &ConfigManager{}
 	err := configManager.LoadConfig("Bad/Dir")
-	assert.NotEqual(t, nil, err)
-	assert.Equal(t, "Error stating path 'Bad/Dir'.", err.Error())
+	c.Check(err, NotNil)
+	c.Check("Error stating path 'Bad/Dir'.", Equals, err.Error())
 }
 
-func TestRequiredFieldsExist(t *testing.T) {
+func (s *ConfigSuite) TestRequiredFieldsExist(c *C) {
 	process := &Process{}
 	processes := map[string]*Process{}
 	processes["foobar"] = process
@@ -88,23 +91,23 @@ func TestRequiredFieldsExist(t *testing.T) {
 	eventsErr := "some_event must have name, description, rule, and actions."
 
 	err := pg.validateRequiredFieldsExist()
-	assert.Equal(t, processErr, err.Error())
+	c.Check(processErr, Equals, err.Error())
 
 	process.Name = "foobar"
 	err = pg.validateRequiredFieldsExist()
-	assert.Equal(t, processErr, err.Error())
+	c.Check(processErr, Equals, err.Error())
 
 	process.Description = "Some description."
 	err = pg.validateRequiredFieldsExist()
-	assert.Equal(t, processErr, err.Error())
+	c.Check(processErr, Equals, err.Error())
 
 	process.Pidfile = "pidfile"
 	err = pg.validateRequiredFieldsExist()
-	assert.Equal(t, processErr, err.Error())
+	c.Check(processErr, Equals, err.Error())
 
 	process.Start = "startscript"
 	err = pg.validateRequiredFieldsExist()
-	assert.Equal(t, nil, nil)
+	c.Check(nil, IsNil)
 
 	event := &Event{}
 	events := map[string]*Event{}
@@ -112,30 +115,30 @@ func TestRequiredFieldsExist(t *testing.T) {
 	pg.Events = events
 
 	err = pg.validateRequiredFieldsExist()
-	assert.Equal(t, eventsErr, err.Error())
+	c.Check(eventsErr, Equals, err.Error())
 
 	event.Name = "some_event"
 	err = pg.validateRequiredFieldsExist()
-	assert.Equal(t, eventsErr, err.Error())
+	c.Check(eventsErr, Equals, err.Error())
 
 	event.Description = "some description"
 	err = pg.validateRequiredFieldsExist()
-	assert.Equal(t, eventsErr, err.Error())
+	c.Check(eventsErr, Equals, err.Error())
 
 	event.Rule = "some rule"
 	err = pg.validateRequiredFieldsExist()
-	assert.Equal(t, nil, nil)
+	c.Check(nil, IsNil)
 }
 
-func TestValidatePersistErr(t *testing.T) {
-	s := &Settings{PersistFile: "/does/not/exist"}
-	err := s.validatePersistFile()
-	assert.NotEqual(t, nil, err)
+func (s *ConfigSuite) TestValidatePersistErr(c *C) {
+	settings := &Settings{PersistFile: "/does/not/exist"}
+	err := settings.validatePersistFile()
+	c.Check(err, NotNil)
 }
 
-func TestValidatePersistGood(t *testing.T) {
+func (s *ConfigSuite) TestValidatePersistGood(c *C) {
 	persistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
-	s := &Settings{PersistFile: persistFile}
-	err := s.validatePersistFile()
-	assert.Equal(t, nil, err)
+	settings := &Settings{PersistFile: persistFile}
+	err := settings.validatePersistFile()
+	c.Check(err, IsNil)
 }
