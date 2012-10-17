@@ -4,8 +4,8 @@ package gonit
 
 import (
 	"fmt"
-	"github.com/xushiwei/goyaml"
 	"io/ioutil"
+	"launchpad.net/goyaml"
 	"os"
 	"path/filepath"
 	"strings"
