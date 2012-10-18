@@ -3,10 +3,14 @@
 package helper
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	. "github.com/cloudfoundry/gonit"
+	"github.com/cloudfoundry/gosteno"
 	"io"
 	"io/ioutil"
+	. "launchpad.net/gocheck"
 	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -16,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type ProcessInfo struct {
@@ -249,4 +254,211 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 		Pidfile:  pidfile,
 		Detached: detached,
 	}
+}
+
+// Read pid from a file.
+func ProxyReadPidFile(path string) (int, error) {
+	return ReadPidFile(path)
+}
+
+// Given the path to a direcotry to build and given an optional output path,
+// this will build the binary.
+func BuildBin(path string, outputPath string) {
+	log.Printf("Building '%v'\n", path)
+	cwd, _ := os.Getwd()
+	ChDirOrExit(path)
+	var output []byte
+	var err error
+	if string(outputPath) == "" {
+		output, err = exec.Command("go", "build").Output()
+	} else {
+		output, err = exec.Command("go", "build", "-o", outputPath).Output()
+	}
+	if err != nil {
+		log.Printf("Error building gonit: \n%v\n", string(output))
+		os.Exit(2)
+	}
+	ChDirOrExit(cwd)
+}
+
+// Given a gonit command, the stderr pipe and a boolean pointer on whether we
+// should expect gonit to be killed this will print out anything printed to
+// stderr and watch to see if the gonit process dies. If it dies unexpectedly
+// this will exit the tests.
+func watchGonit(gonitCmd *exec.Cmd, stderr io.ReadCloser, expectedExit *bool) {
+	reader := bufio.NewReader(stderr)
+	var err error
+	var line []byte
+	for ; err == nil; line, _, err = reader.ReadLine() {
+		if string(line) != "" {
+			log.Printf("Gonit stderr message: %+v\n", string(line))
+		}
+	}
+	gonitCmd.Process.Wait()
+	if !*expectedExit {
+		log.Printf("Gonit process died unexpectedly.\n")
+		os.Exit(2)
+	}
+}
+
+// Given a config directory and whether we should be verbose in logging, this
+// will start gonit, output the log messages and watch to make sure the gonit
+// process doesn't die unexpectedly.
+func StartGonit(
+	configDir string, verbose bool) (*exec.Cmd, io.ReadCloser, *bool) {
+	cmd := exec.Command("./gonit", "-d", "10", "-c", configDir)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Println(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Println(err)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("Error starting gonit: %v\n", err.Error())
+		os.Exit(2)
+	}
+	if verbose {
+		go io.Copy(os.Stdout, stdout)
+		go io.Copy(os.Stderr, stderr)
+	}
+	log.Printf("Started gonit pid %v.\n", cmd.Process.Pid)
+	expectedExit := false
+	go watchGonit(cmd, stderr, &expectedExit)
+	waitUntilRunning()
+	return cmd, stdout, &expectedExit
+}
+
+// This kills all processes gonit is running, then stops gonit.
+func StopGonit(gonitCmd *exec.Cmd, verbose bool, expectedExit *bool) {
+	RunGonitCmd("stop all", verbose)
+	*expectedExit = true
+	gonitCmd.Process.Kill()
+	log.Printf("Killed gonit pid %v.\n", gonitCmd.Process.Pid)
+}
+
+// Given a command, this will pipe the output to stdout/stderr if verbose is
+// turned on.
+func StartAndPipeOutput(cmd *exec.Cmd, verbose bool) {
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Println(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Println(err)
+	}
+	err = cmd.Start()
+	if err != nil {
+		log.Println(err)
+	}
+	if verbose {
+		go io.Copy(os.Stdout, stdout)
+		go io.Copy(os.Stderr, stderr)
+	}
+}
+
+// Waits for gonit to indicate that it is ready to take API requests.
+func waitUntilRunning() {
+	_, err := exec.Command("./gonit", "isrunning").Output()
+	if err != nil {
+		log.Printf("Waiting for gonit.\n")
+		waitUntilRunning()
+	} else {
+		log.Printf("Gonit is ready.\n")
+	}
+}
+
+// Asserts that a given pid is running.
+func AssertProcessExists(c *C, pid int) {
+	_, err := syscall.Getpgid(pid)
+	c.Check(err, IsNil)
+}
+
+// Asserts that a given pid is not running.
+func AssertProcessDoesntExist(c *C, pid int) {
+	_, err := syscall.Getpgid(pid)
+	c.Check(err, Not(IsNil))
+}
+
+// A helper function used by FindLogLine to set a timeout that will trigger
+// FindLogLine to return false if the log line is not found within the timeout
+// duration.
+func setTimedOut(duration time.Duration, timedout *bool) {
+	for {
+		select {
+		case <-time.After(duration):
+			*timedout = true
+			break
+		}
+	}
+}
+
+// Given an stdout pipe, a logline to find and a timeout string, this will
+// return whether the logline was printed or not.
+func FindLogLine(stdout io.ReadCloser, logline string, timeout string) bool {
+	duration, err := time.ParseDuration(timeout)
+	if err != nil {
+		log.Printf("Invalid duration '%v'", timeout)
+		return false
+	}
+	reader := bufio.NewReader(stdout)
+	var line []byte
+	timedout := false
+	go setTimedOut(duration, &timedout)
+	prettifier := steno.NewJsonPrettifier(steno.EXCLUDE_NONE)
+	err = nil
+	for ; err == nil; line, _, err = reader.ReadLine() {
+		if timedout {
+			log.Printf("Finding log line '%v' timed out.", logline)
+			return false
+		}
+		record, err := prettifier.DecodeJsonLogEntry(string(line))
+		if err != nil {
+			// If we have an error, it's likely because the configmanager logs some
+			// stuff before the steno log is told to output JSON, so we get some
+			// non-JSON messages that can't be parsed.
+			continue
+		}
+		if strings.Contains(record.Message, logline) {
+			return true
+		}
+	}
+	return false
+}
+
+// Given a gonit command string such as "start all", this will run the command.
+func RunGonitCmd(command string, verbose bool) {
+	log.Printf("Running command: './gonit %v'\n", command)
+	cmd := exec.Command("./gonit", strings.Fields(command)...)
+	StartAndPipeOutput(cmd, verbose)
+	cmd.Wait()
+}
+
+// Changes directories to path or exits if it fails.
+func ChDirOrExit(path string) {
+	if err := os.Chdir(path); err != nil {
+		log.Printf("Error changing directory: %v", err.Error())
+		os.Exit(2)
+	}
+}
+
+func RemoveFilesWithExtension(path string, extension string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+
+	files, err := dir.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+	for _, filename := range files {
+		if filepath.Ext(filename) == extension {
+			os.Remove(filepath.Join(path, filename))
+		}
+	}
+	return nil
 }

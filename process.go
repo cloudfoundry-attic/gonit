@@ -110,6 +110,7 @@ func (p *Process) Spawn(program string) (*exec.Cmd, error) {
 func (p *Process) StartProcess() (int, error) {
 	cmd, err := p.Spawn(p.Start)
 	if err != nil {
+		Log.Errorf("Error starting process '%v': %v", p.Name, err.Error())
 		return 0, err
 	}
 
