@@ -228,6 +228,7 @@ func start() {
 	rpc.Register(api)
 
 	go rpcServer.Serve()
+	api.Control.SetRunning()
 }
 
 var handlers = map[syscall.Signal]func(){
