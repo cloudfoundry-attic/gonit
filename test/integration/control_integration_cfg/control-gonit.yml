@@ -1,0 +1,16 @@
+---
+processes:
+  control1:
+    description: Control integration test.
+    pidfile: ../test/integration/tmp/process_tmp/control1.pid
+    start: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n control1 -p ../test/integration/tmp/process_tmp/control1.pid -MB start
+    stop: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n control1 -p ../test/integration/tmp/process_tmp/control1.pid -MB stop
+    restart: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n control1 -p ../test/integration/tmp/process_tmp/control1.pid -MB restart
+    user: vcap
+  control2:
+    description: Control integration test.
+    pidfile: ../test/integration/tmp/process_tmp/control2.pid
+    start: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n control2 -p ../test/integration/tmp/process_tmp/control2.pid -MB start
+    stop: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n control2 -p ../test/integration/tmp/process_tmp/control2.pid -MB stop
+    restart: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n control2 -p ../test/integration/tmp/process_tmp/control2.pid -MB restart
+    user: vcap

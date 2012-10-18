@@ -1,0 +1,25 @@
+---
+processes:
+  balloonmem:
+    description: Balloons memory.
+    actions:
+      alert:
+        - memory_over_5
+      restart:
+        - memory_over_10
+    pidfile: ../test/integration/tmp/process_tmp/balloonmem.pid
+    start: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n balloonmem -p ../test/integration/tmp/process_tmp/balloonmem.pid -MB start
+    stop: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n balloonmem -p ../test/integration/tmp/process_tmp/balloonmem.pid -MB stop
+    restart: ../test/integration/tmp/goprocess -s 48h -d ../test/integration/tmp/process_tmp -n balloonmem -p ../test/integration/tmp/process_tmp/balloonmem.pid -MB restart
+    user: vcap
+events:
+  memory_over_5:
+    description: The memory for a process is too high.
+    rule: memory_used > 1mb
+    interval: 1s
+    duration: 1s
+  memory_over_10:
+    description: The memory for a process is too high.
+    rule: memory_used > 6mb
+    interval: 1s
+    duration: 1s

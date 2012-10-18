@@ -1,0 +1,7 @@
+---
+logging:
+  codec: json
+daemon:
+  pidfile: ../test/integration/tmp/gonit.pid
+  dir: ../test/integration/tmp
+  name: gonit
