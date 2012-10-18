@@ -44,6 +44,11 @@ type Control struct {
 	visits        map[string]*visitor
 	States        map[string]*ProcessState
 	persistLock   sync.Mutex
+	Running       bool
+}
+
+func (c *Control) SetRunning() {
+	c.Running = true
 }
 
 // flags to avoid invoking actions more than once
