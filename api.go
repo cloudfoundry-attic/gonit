@@ -305,6 +305,13 @@ func (a *API) Reload(unused interface{}, r *ActionResult) error {
 	return nil
 }
 
+func (a *API) Isrunning(unused interface{}, r *ActionResult) error {
+	if !a.Control.Running {
+		return errors.New("Not running.")
+	}
+	return nil
+}
+
 // quit server daemon
 func (a *API) Quit(unused interface{}, r *ActionResult) error {
 	return notimpl
