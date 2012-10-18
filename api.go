@@ -305,6 +305,17 @@ func (a *API) Reload(unused interface{}, r *ActionResult) error {
 	return nil
 }
 
+// Whether gonit is ready to start accepting API traffic.
+func (a *API) Isrunning(unused interface{}, r *ActionResult) error {
+	var err error
+	r.Total++
+	if !a.Control.Running {
+		r.Errors++
+		err = &ActionError{errors.New("Not running.")}
+	}
+	return err
+}
+
 // quit server daemon
 func (a *API) Quit(unused interface{}, r *ActionResult) error {
 	return notimpl

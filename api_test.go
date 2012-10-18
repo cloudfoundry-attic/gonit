@@ -22,10 +22,6 @@ var _ = Suite(&ApiSuite{})
 
 // Hook up gocheck into the gotest runner.
 func Test(t *testing.T) {
-	// propagate 'go test -v' to '-gocheck.v'
-	if flag.Lookup("test.v").Value.String() == "true" {
-		flag.Lookup("gocheck.v").Value.Set("true")
-	}
 	TestingT(t)
 }
 
