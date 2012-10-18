@@ -3,10 +3,14 @@
 package helper
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	. "github.com/cloudfoundry/gonit"
+	"github.com/cloudfoundry/gosteno"
 	"io"
 	"io/ioutil"
+	"launchpad.net/goyaml"
 	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -14,8 +18,10 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type ProcessInfo struct {
@@ -36,6 +42,7 @@ type ProcessInfo struct {
 }
 
 var TestProcess, goprocess string
+var MAX_GONIT_RETRIES int = 10
 
 func CurrentProcessInfo() *ProcessInfo {
 	var hasTty bool
@@ -91,25 +98,6 @@ func ReadData(data interface{}, file string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-// compile "test/$name/main.go" to go test's tmpdir
-// and return path to the executable
-func BuildTestProgram(name string) string {
-	dir := path.Dir(os.Args[0])
-	path := filepath.Join(dir, "go"+name)
-	main := filepath.Join("test", name, "main.go")
-
-	cmd := exec.Command("go", "build", "-o", path, main)
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
-
-	err := cmd.Run()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return path
 }
 
 func TouchFile(name string, mode os.FileMode) {
@@ -204,7 +192,11 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 
 	if goprocess == "" {
 		// binary used for the majority of tests
-		goprocess = BuildTestProgram("process")
+		goprocess = path.Dir(os.Args[0]) + "/goprocess"
+		err := BuildBin("/test/process", goprocess)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	// see TempDir comment; copy goprocess where any user can execute
@@ -237,7 +229,6 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 	}
 
 	start = mkcmd(args, "start")
-
 	return &Process{
 		Name:     name,
 		Start:    strings.Join(start, " "),
@@ -249,4 +240,228 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 		Pidfile:  pidfile,
 		Detached: detached,
 	}
+}
+
+func CreateGonitCfg(numProcesses int, pname string, writePath string,
+	procPath string, includeEvents bool) error {
+	pg := &ProcessGroup{}
+	processes := map[string]*Process{}
+	for i := 0; i < numProcesses; i++ {
+		procName := pname + strconv.Itoa(i)
+		pidfile := fmt.Sprintf("%v/%v.pid", writePath, procName)
+		runCmd := fmt.Sprintf("%v -d %v -n %v -p %v", procPath, writePath, procName,
+			pidfile)
+		if includeEvents {
+			runCmd += " -MB"
+		}
+		process := &Process{
+			Name:        procName,
+			Description: "Test process " + procName,
+			Start:       runCmd + " start",
+			Stop:        runCmd + " stop",
+			Restart:     runCmd + " restart",
+			Pidfile:     pidfile,
+		}
+		if includeEvents {
+			process.Actions = map[string][]string{}
+			process.Actions["alert"] = []string{"memory_over_1"}
+			process.Actions["restart"] = []string{"memory_over_6"}
+			memoryOver1 := &Event{
+				Name:        "memory_over_1",
+				Description: "The memory for a process is too high",
+				Rule:        "memory_used > 1mb",
+				Interval:    "1s",
+				Duration:    "1s",
+			}
+			memoryOver6 := &Event{
+				Name:        "memory_over_6",
+				Description: "The memory for a process is too high",
+				Rule:        "memory_used > 6mb",
+				Interval:    "1s",
+				Duration:    "1s",
+			}
+			events := map[string]*Event{}
+			events["memory_over_1"] = memoryOver1
+			events["memory_over_6"] = memoryOver6
+			pg.Events = events
+		}
+		processes[procName] = process
+	}
+	pg.Processes = processes
+	if yaml, err := goyaml.Marshal(pg); err != nil {
+		return err
+	} else {
+		gonitCfgPath := fmt.Sprintf("%v/%v-gonit.yml", writePath, pname)
+		if err := ioutil.WriteFile(gonitCfgPath, yaml, 0666); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func CreateGonitSettings(gonitPidfile string, gonitDir string, procDir string) {
+	logging := &LoggerConfig{Codec: "json"}
+	settings := &Settings{Logging: logging}
+	daemon := &Process{
+		Pidfile: gonitPidfile,
+		Dir:     gonitDir,
+		Name:    "gonit",
+	}
+	settings.Daemon = daemon
+	yaml, _ := goyaml.Marshal(settings)
+	err := ioutil.WriteFile(procDir+"/gonit.yml", yaml, 0666)
+	if err != nil {
+		log.Fatalf("WriteFile(%s): %v", procDir+"/gonit.yml", err)
+	}
+}
+
+// Read pid from a file.
+func ProxyReadPidFile(path string) (int, error) {
+	return ReadPidFile(path)
+}
+
+// Given the path to a direcotry to build and given an optional output path,
+// this will build the binary.
+func BuildBin(path string, outputPath string) error {
+	log.Printf("Building '%v'\n", path)
+	var output []byte
+	var err error
+	output, err = exec.Command("go", "build", "-o", outputPath,
+		path+"/main.go").Output()
+	if err != nil {
+		return fmt.Errorf("Error building bin '%v': %v", path, string(output))
+	}
+	return nil
+}
+
+// Given a gonit command, prints out any stderr messages.
+func printCmdStderr(gonitCmd *exec.Cmd, stderr io.ReadCloser) {
+	reader := bufio.NewReader(stderr)
+	for {
+		line, _, err := reader.ReadLine()
+		if err != nil {
+			break
+		}
+		log.Printf("Gonit stderr message: %+v\n", string(line))
+	}
+	gonitCmd.Process.Wait()
+}
+
+// Given a config directory, this will start gonit, output the log messages and
+// watch gonit to print out error messages.
+func StartGonit(configDir string) (*exec.Cmd, io.ReadCloser, error) {
+	cmd := exec.Command("./gonit", "-d", "10", "-c", configDir)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Println(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Println(err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, nil, fmt.Errorf("Error starting gonit: %v", err.Error())
+	}
+	log.Printf("Started gonit pid %v.\n", cmd.Process.Pid)
+	go printCmdStderr(cmd, stderr)
+	err = waitUntilRunning(configDir)
+	return cmd, stdout, err
+}
+
+// This kills all processes gonit is running, then stops gonit. Path is used
+// because we set custom pid file locations so the gonit client needs to know
+// where the config files are for that.
+func StopGonit(gonitCmd *exec.Cmd, path string) error {
+	pid := gonitCmd.Process.Pid
+	if !DoesProcessExist(pid) {
+		return fmt.Errorf("Gonit process died unexpectedly.")
+	}
+	if err := RunGonitCmd("stop all", path); err != nil {
+		return err
+	}
+	gonitCmd.Process.Kill()
+	log.Printf("Killed gonit pid %v.\n", pid)
+	return nil
+}
+
+// Waits for gonit to indicate that it is ready to take API requests.
+func waitUntilRunning(path string) error {
+	for i := 0; i < MAX_GONIT_RETRIES; i++ {
+		log.Printf("Waiting for gonit.\n")
+		if err := RunGonitCmd("about", path); err == nil {
+			log.Printf("Gonit is ready.\n")
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("Could not connect to gonit.")
+}
+
+// Returns whether a given pid is running.
+func DoesProcessExist(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	if err != nil {
+		return false
+	}
+
+	return true
+}
+
+// A helper function used by FindLogLine to set a timeout that will trigger
+// FindLogLine to return false if the log line is not found within the timeout
+// duration.
+func setTimedOut(duration time.Duration, timedout *bool) {
+	for {
+		select {
+		case <-time.After(duration):
+			*timedout = true
+			break
+		}
+	}
+}
+
+// Given an stdout pipe, a logline to find and a timeout string, this will
+// return whether the logline was printed or not.
+func FindLogLine(stdout io.ReadCloser, logline string, timeout string) bool {
+	duration, err := time.ParseDuration(timeout)
+	if err != nil {
+		log.Printf("Invalid duration '%v'", timeout)
+		return false
+	}
+	reader := bufio.NewReader(stdout)
+	timedout := false
+	go setTimedOut(duration, &timedout)
+	prettifier := steno.NewJsonPrettifier(steno.EXCLUDE_NONE)
+	for {
+		line, _, err := reader.ReadLine()
+		if err != nil {
+			break
+		}
+		// TODO(lisbakke): It is possible we won't get here if ReadLine hangs.
+		if timedout {
+			log.Printf("Finding log line '%v' timed out.", logline)
+			return false
+		}
+		record, err := prettifier.DecodeJsonLogEntry(string(line))
+		if err != nil {
+			// If we have an error, it's likely because the configmanager logs some
+			// stuff before the steno log is told to output JSON, so we get some
+			// non-JSON messages that can't be parsed.
+			continue
+		}
+		if strings.Contains(record.Message, logline) {
+			return true
+		}
+	}
+	return false
+}
+
+// Given a gonit command string such as "start all", this will run the command.
+// Path is used because we set custom pid file locations so the gonit client
+// needs to know where the config files are for that.
+func RunGonitCmd(command string, path string) error {
+	command = "-c " + path + " " + command
+	log.Printf("Running command: './gonit %v'\n", command)
+	cmd := exec.Command("./gonit", strings.Fields(command)...)
+	return cmd.Run()
 }
