@@ -193,7 +193,7 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 	if goprocess == "" {
 		// binary used for the majority of tests
 		goprocess = path.Dir(os.Args[0]) + "/goprocess"
-		err := BuildBin("/test/process", goprocess)
+		err := BuildBin("test/process", goprocess)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -75,9 +75,8 @@ func (s *LogSuite) TestLogFile(c *C) {
 	err = config.Close()
 	c.Check(err, IsNil)
 
-	// make log file read-only and check Init returns an error
-	err = os.Chmod(config.FileName, 0444)
-	c.Check(err, IsNil)
+	// check Init returns an error when file create fails
+	config.FileName = "/dev/null/gonnafail"
 	err = config.Init()
 	c.Check(err, NotNil)
 }
