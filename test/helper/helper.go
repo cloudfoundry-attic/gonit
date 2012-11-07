@@ -41,7 +41,7 @@ type ProcessInfo struct {
 	HasTty   bool
 }
 
-var TestProcess, goprocess string
+var TestProcess, goprocess, toplevel string
 var MAX_GONIT_RETRIES int = 10
 
 func CurrentProcessInfo() *ProcessInfo {
@@ -242,6 +242,20 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 	}
 }
 
+func CreateProcessGroupCfg(name string, dir string, pg *ProcessGroup) error {
+	yaml, err := goyaml.Marshal(pg)
+	if err != nil {
+		return err
+	}
+
+	file := filepath.Join(dir, name+"-gonit.yml")
+	if err := ioutil.WriteFile(file, yaml, 0666); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func CreateGonitCfg(numProcesses int, pname string, writePath string,
 	procPath string, includeEvents bool) error {
 	pg := &ProcessGroup{}
@@ -288,19 +302,14 @@ func CreateGonitCfg(numProcesses int, pname string, writePath string,
 		processes[procName] = process
 	}
 	pg.Processes = processes
-	if yaml, err := goyaml.Marshal(pg); err != nil {
-		return err
-	} else {
-		gonitCfgPath := fmt.Sprintf("%v/%v-gonit.yml", writePath, pname)
-		if err := ioutil.WriteFile(gonitCfgPath, yaml, 0666); err != nil {
-			return err
-		}
-	}
-	return nil
+	return CreateProcessGroupCfg(pname, writePath, pg)
 }
 
-func CreateGonitSettings(gonitPidfile string, gonitDir string, procDir string) {
-	logging := &LoggerConfig{Codec: "json"}
+func CreateGonitSettings(gonitPidfile string, gonitDir string, procDir string) *Settings {
+	logging := &LoggerConfig{
+		Codec: "json",
+		Level: "debug",
+	}
 	settings := &Settings{Logging: logging}
 	daemon := &Process{
 		Pidfile: gonitPidfile,
@@ -308,11 +317,13 @@ func CreateGonitSettings(gonitPidfile string, gonitDir string, procDir string) {
 		Name:    "gonit",
 	}
 	settings.Daemon = daemon
+	settings.ApplyDefaults()
 	yaml, _ := goyaml.Marshal(settings)
 	err := ioutil.WriteFile(procDir+"/gonit.yml", yaml, 0666)
 	if err != nil {
 		log.Fatalf("WriteFile(%s): %v", procDir+"/gonit.yml", err)
 	}
+	return settings
 }
 
 // Read pid from a file.
@@ -320,14 +331,39 @@ func ProxyReadPidFile(path string) (int, error) {
 	return ReadPidFile(path)
 }
 
+func findPath(path string, name string) (string, error) {
+	if _, err := os.Stat(path); err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(filepath.Join(path, name)); err == nil {
+		return path, nil
+	}
+	return findPath(filepath.Join(path, ".."), name)
+}
+
+func topLevel() string {
+	if toplevel == "" {
+		dir, err := findPath(".", ".git")
+		if err != nil {
+			log.Fatal(err)
+		}
+		toplevel = dir
+	}
+	return toplevel
+}
+
 // Given the path to a direcotry to build and given an optional output path,
 // this will build the binary.
 func BuildBin(path string, outputPath string) error {
-	log.Printf("Building '%v'", path)
 	var output []byte
 	var err error
-	output, err = exec.Command("go", "build", "-o", outputPath,
-		path+"/main.go").Output()
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(topLevel(), path)
+	}
+	path = filepath.Join(path, "main.go")
+	log.Printf("Building '%v'", path)
+	output, err =
+		exec.Command("go", "build", "-o", outputPath, path).Output()
 	if err != nil {
 		return fmt.Errorf("Error building bin '%v': %v", path, string(output))
 	}

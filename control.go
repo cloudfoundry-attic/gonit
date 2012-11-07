@@ -145,7 +145,12 @@ func (c *Control) State(process *Process) *ProcessState {
 	}
 	procName := process.Name
 	if _, exists := c.States[procName]; !exists {
-		c.States[procName] = &ProcessState{}
+		state := &ProcessState{}
+		c.States[procName] = state
+		if process.IsMonitoringModeActive() {
+			state.Monitor = MONITOR_INIT
+		}
+
 	}
 	return c.States[procName]
 }
@@ -244,14 +249,14 @@ func (c *Control) doStop(process *Process) bool {
 	}
 	visitor.stopped = true
 
+	c.monitorUnset(process)
+
 	if process.IsRunning() {
 		process.StopProcess()
 		if process.waitState(processStopped) != processStopped {
 			rv = false
 		}
 	}
-
-	c.monitorUnset(process)
 
 	return rv
 }

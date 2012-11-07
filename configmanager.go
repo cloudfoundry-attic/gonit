@@ -175,7 +175,10 @@ func (c *ConfigManager) ApplyDefaultSettings() {
 	if c.Settings == nil {
 		c.Settings = &Settings{}
 	}
-	settings := c.Settings
+	c.Settings.ApplyDefaults()
+}
+
+func (settings *Settings) ApplyDefaults() {
 	if settings.AlertTransport == "" {
 		settings.AlertTransport = DEFAULT_ALERT_TRANSPORT
 	}
