@@ -301,6 +301,7 @@ func (a *API) Reload(unused interface{}, r *ActionResult) error {
 		control); err != nil {
 		return err
 	}
+	// TODO: Watcher restart
 	Log.Info("Finished config reload")
 	return nil
 }
