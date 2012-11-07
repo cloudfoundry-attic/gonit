@@ -14,7 +14,10 @@ type ControlSuite struct{}
 
 var _ = Suite(&ControlSuite{})
 
-var groupName = "controlTest"
+var (
+	groupName        = "controlTest"
+	gonitPersistFile = ".gonit.persist.yml"
+)
 
 type FakeEventMonitor struct {
 	numStartMonitoringCalled int
@@ -28,11 +31,17 @@ func (fem *FakeEventMonitor) Start(configManager *ConfigManager,
 	return nil
 }
 
+func (s *ControlSuite) TearDownTest(c *C) {
+	os.Remove(gonitPersistFile)
+}
+
 func (fem *FakeEventMonitor) Stop() {}
 
 func (s *ControlSuite) TestActions(c *C) {
 	fem := &FakeEventMonitor{}
-	configManager := &ConfigManager{Settings: &Settings{}}
+	configManager := &ConfigManager{
+		Settings: &Settings{PersistFile: gonitPersistFile},
+	}
 	ctl := &Control{ConfigManager: configManager, EventMonitor: fem}
 
 	name := "simple"
@@ -72,7 +81,9 @@ func (s *ControlSuite) TestActions(c *C) {
 }
 
 func (s *ControlSuite) TestDepends(c *C) {
-	configManager := &ConfigManager{Settings: &Settings{}}
+	configManager := &ConfigManager{
+		Settings: &Settings{PersistFile: gonitPersistFile},
+	}
 	ctl := &Control{ConfigManager: configManager, EventMonitor: &FakeEventMonitor{}}
 
 	name := "depsimple"
@@ -188,7 +199,9 @@ func (s *ControlSuite) TestDepends(c *C) {
 }
 
 func (s *ControlSuite) TestLoadPersistState(c *C) {
-	configManager := &ConfigManager{Settings: &Settings{}}
+	configManager := &ConfigManager{
+		Settings: &Settings{PersistFile: gonitPersistFile},
+	}
 	control := &Control{ConfigManager: configManager}
 	testPersistFile := os.Getenv("PWD") + "/test/config/expected_persist_file.yml"
 	process := &Process{Name: "MyProcess"}
