@@ -24,13 +24,13 @@ type ConfigManager struct {
 }
 
 type Settings struct {
-	AlertTransport string
-	SocketFile     string
-	RpcServerUrl   string
-	PollInterval   int
-	Daemon         *Process
-	PersistFile    string
-	Logging        *LoggerConfig
+	AlertTransport      string
+	SocketFile          string
+	RpcServerUrl        string
+	ProcessPollInterval int
+	Daemon              *Process
+	PersistFile         string
+	Logging             *LoggerConfig
 }
 
 type ProcessGroup struct {

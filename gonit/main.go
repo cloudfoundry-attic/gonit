@@ -31,6 +31,7 @@ var (
 	api          *gonit.API
 	rpcServer    *gonit.RpcServer
 	eventMonitor *gonit.EventMonitor
+	watcher      *gonit.Watcher
 	settings     *gonit.Settings
 )
 
@@ -63,7 +64,7 @@ func main() {
 	api = gonit.NewAPI(configManager)
 	args := flag.Args()
 	if len(args) == 0 {
-		if settings.PollInterval != 0 {
+		if settings.ProcessPollInterval != 0 {
 			runDaemon(api.Control, configManager)
 		} else {
 			log.Fatal("Nothing todo (yet)")
@@ -87,7 +88,7 @@ func applySettings() {
 		settings.RpcServerUrl = rpcUrl
 	}
 	if poll != 0 {
-		settings.PollInterval = poll
+		settings.ProcessPollInterval = poll
 	}
 	if logLevel != "" {
 		settings.Logging.Level = logLevel
@@ -207,10 +208,13 @@ func wakeup() {
 
 func shutdown() {
 	log.Printf("Quit")
-	eventMonitor.Stop()
+
 	if rpcServer != nil {
 		rpcServer.Shutdown()
 	}
+
+	watcher.Stop()
+	eventMonitor.Stop()
 
 	settings.Logging.Close()
 
@@ -219,6 +223,8 @@ func shutdown() {
 
 func start() {
 	var err error
+
+	watcher.Start()
 
 	rpcServer, err = gonit.NewRpcServer(settings.RpcServerUrl)
 	if err != nil {
@@ -273,6 +279,7 @@ func runDaemon(control *gonit.Control, configManager *gonit.ConfigManager) {
 		log.Fatal(err)
 	}
 	defer os.Remove(daemon.Pidfile)
+	watcher = &gonit.Watcher{Control: control}
 	createEventMonitor(control, configManager)
 	start()
 	loop()
