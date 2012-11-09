@@ -1,0 +1,20 @@
+Ruby JSON RPC Client for Go RPC Servers
+
+The gonit daemon serves its API over the standard net/rpc go package.
+Existing Ruby json rpc clients do not support unix sockets, afaict.
+
+Go's json rpc implementation may not be compatible with existing clients in any
+case; rsc on json rpc:
+
+  `It's not a standard.  It's a web page some guy wrote,
+   and it's not terribly fleshed out.' [1]
+
+This module is currently generic, but may become gonit specific in the future.
+
+While gonit and this client can talk over a TCP connection, such use is
+discouraged as the connection is not authenticated.  If you tinker with TCP, it
+should only be to localhost, in which case no connect timeouts are needed.
+
+File based permissions can be used for unix socket connections.
+
+[1] https://groups.google.com/d/msg/golang-nuts/6sCvbBaZvtI/TgjOa-rZ12EJ
