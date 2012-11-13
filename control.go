@@ -31,6 +31,10 @@ const (
 	processStarted
 )
 
+const (
+	ERROR_IN_PROGRESS_FMT = "Process %q action already in progress"
+)
+
 // So we can mock it in tests.
 type EventMonitorInterface interface {
 	StartMonitoringProcess(process *Process)
@@ -58,6 +62,9 @@ type ProcessState struct {
 	Monitor     int
 	MonitorLock sync.Mutex
 	Starts      int
+
+	actionPending     bool
+	actionPendingLock sync.Mutex
 }
 
 // XXX TODO needed for tests, a form of this should probably be in ConfigManager
@@ -145,7 +152,12 @@ func (c *Control) State(process *Process) *ProcessState {
 	}
 	procName := process.Name
 	if _, exists := c.States[procName]; !exists {
-		c.States[procName] = &ProcessState{}
+		state := &ProcessState{}
+		c.States[procName] = state
+		if process.IsMonitoringModeActive() {
+			state.Monitor = MONITOR_INIT
+		}
+
 	}
 	return c.States[procName]
 }
@@ -159,18 +171,24 @@ func (c *Control) RegisterEventMonitor(eventMonitor *EventMonitor) {
 // Invoke given action for the given process and its
 // dependents and/or dependencies
 func (c *Control) DoAction(name string, action int) error {
-	c.visits = make(map[string]*visitor)
-
 	process, err := c.Config().FindProcess(name)
 	if err != nil {
 		Log.Error(err.Error())
 		return err
 	}
 
+	return c.invoke(process, func() error {
+		return c.dispatchAction(process, action)
+	})
+}
+
+func (c *Control) dispatchAction(process *Process, action int) error {
+	c.visits = make(map[string]*visitor)
+
 	switch action {
 	case ACTION_START:
 		if process.IsRunning() {
-			Log.Debugf("Process %q already running", name)
+			Log.Debugf("Process %q already running", process.Name)
 			c.monitorSet(process)
 			return nil
 		}
@@ -199,7 +217,7 @@ func (c *Control) DoAction(name string, action int) error {
 		c.doUnmonitor(process)
 
 	default:
-		Log.Errorf("process %q -- invalid action: %d",
+		err := fmt.Errorf("process %q -- invalid action: %d",
 			process.Name, action)
 		return err
 	}
@@ -207,6 +225,17 @@ func (c *Control) DoAction(name string, action int) error {
 		Log.Errorf("Error persisting state: '%v'", err.Error())
 	}
 	return nil
+}
+
+// do not allow more than one control action per process at the same time
+func (c *Control) invoke(process *Process, action func() error) error {
+	if c.isActionPending(process) {
+		return fmt.Errorf(ERROR_IN_PROGRESS_FMT, process.Name)
+	}
+	c.setActionPending(process, true)
+	defer c.setActionPending(process, false)
+
+	return action()
 }
 
 // Start the given Process dependencies before starting Process
@@ -244,14 +273,14 @@ func (c *Control) doStop(process *Process) bool {
 	}
 	visitor.stopped = true
 
+	c.monitorUnset(process)
+
 	if process.IsRunning() {
 		process.StopProcess()
 		if process.waitState(processStopped) != processStopped {
 			rv = false
 		}
 	}
-
-	c.monitorUnset(process)
 
 	return rv
 }
@@ -322,6 +351,24 @@ func (c *Control) monitorSet(process *Process) {
 	}
 }
 
+// for use by process watcher
+func (c *Control) monitorActivate(process *Process) bool {
+	state := c.State(process)
+	state.MonitorLock.Lock()
+	defer state.MonitorLock.Unlock()
+
+	if state.Monitor == MONITOR_NOT {
+		return false
+	}
+
+	if state.Monitor != MONITOR_YES {
+		state.Monitor = MONITOR_YES // INIT -> YES
+		Log.Infof("%q monitoring activated", process.Name)
+	}
+
+	return true
+}
+
 func (c *Control) monitorUnset(process *Process) {
 	state := c.State(process)
 	state.MonitorLock.Lock()
@@ -330,6 +377,20 @@ func (c *Control) monitorUnset(process *Process) {
 		state.Monitor = MONITOR_NOT
 		Log.Infof("%q monitoring disabled", process.Name)
 	}
+}
+
+func (c *Control) isActionPending(process *Process) bool {
+	state := c.State(process)
+	state.actionPendingLock.Lock()
+	defer state.actionPendingLock.Unlock()
+	return state.actionPending
+}
+
+func (c *Control) setActionPending(process *Process, actionPending bool) {
+	state := c.State(process)
+	state.actionPendingLock.Lock()
+	defer state.actionPendingLock.Unlock()
+	state.actionPending = actionPending
 }
 
 func (c *Control) IsMonitoring(process *Process) bool {
