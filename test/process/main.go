@@ -26,6 +26,7 @@ var (
 	name       = flag.String("n", "test", "process name")
 	pidfile    = flag.String("p", "test.pid", "process pid file")
 	sleep      = flag.String("s", "10s", "sleep duration")
+	wait       = flag.String("w", "", "start/stop wait duration")
 	exit       = flag.Int("x", 0, "exit code")
 )
 
@@ -100,14 +101,23 @@ func balloon() {
 	}
 }
 
+func sleepDuration(name string, value string) time.Duration {
+	if value == "" {
+		return time.Duration(0)
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		log.Fatalf("Invalid %s '%s': %v", name, value, err)
+	}
+	return duration
+}
+
 func main() {
 	flag.Parse()
 	log.SetFlags(log.Ltime | log.Lshortfile)
 
-	pause, err := time.ParseDuration(*sleep)
-	if err != nil {
-		log.Fatalf("Invalid -s '%s': %v", *sleep, err)
-	}
+	pause := sleepDuration("-s", *sleep)
+	waitTime := sleepDuration("-w", *wait)
 
 	cmd := flag.Args()[0]
 	switch cmd {
@@ -116,6 +126,10 @@ func main() {
 			forkme()
 		}
 		if *grand {
+			if *wait != "" {
+				fmt.Fprintf(os.Stdout, "Start (savePid) wait=%s\n", *wait)
+				time.Sleep(waitTime)
+			}
 			savePid()
 			go handleSignals()
 		}
@@ -131,10 +145,15 @@ func main() {
 		fmt.Fprintf(os.Stdout, "Stopped. [exit(%d)]\n", *exit)
 		os.Exit(*exit)
 	case "stop":
+		if *wait != "" {
+			fmt.Fprintf(os.Stdout, "Stop wait=%s\n", *wait)
+			time.Sleep(waitTime)
+		}
 		pid, err := gonit.ReadPidFile(*pidfile)
 		if err != nil {
 			log.Fatal(err)
 		}
+		fmt.Fprintf(os.Stdout, "Sending SIGTERM to pid=%d\n", pid)
 		err = syscall.Kill(pid, syscall.SIGTERM)
 		if err != nil {
 			log.Fatal(err)
