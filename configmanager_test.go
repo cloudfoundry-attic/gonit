@@ -31,7 +31,7 @@ func assertFileParsed(c *C, configManager *ConfigManager) {
 
 	c.Check("none", Equals, configManager.Settings.AlertTransport)
 	c.Check("", Not(Equals), configManager.Settings.RpcServerUrl)
-	c.Check(0, Equals, configManager.Settings.PollInterval)
+	c.Check(0, Equals, configManager.Settings.ProcessPollInterval)
 	c.Check(configManager.Settings.Daemon, NotNil)
 	c.Check("lolnit", Equals, configManager.Settings.Daemon.Name)
 	c.Check(configManager.Settings.Logging, NotNil)
