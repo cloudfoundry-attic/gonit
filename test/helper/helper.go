@@ -76,7 +76,7 @@ func CurrentProcessInfo() *ProcessInfo {
 func toJson(data interface{}) []byte {
 	json, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	return json
 }
@@ -84,55 +84,55 @@ func toJson(data interface{}) []byte {
 func WriteData(data interface{}, file string) {
 	err := ioutil.WriteFile(file, toJson(data), 0666)
 	if err != nil {
-		log.Fatalf("WriteFile(%s): %v", file, err)
+		log.Panicf("WriteFile(%s): %v", file, err)
 	}
 }
 
 func ReadData(data interface{}, file string) {
 	contents, err := ioutil.ReadFile(file)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	err = json.Unmarshal(contents, data)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
 func TouchFile(name string, mode os.FileMode) {
 	dst, err := os.Create(name)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	dst.Close()
 	err = os.Chmod(name, mode)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
 func CopyFile(srcName, dstName string, mode os.FileMode) {
 	src, err := os.Open(srcName)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer src.Close()
 
 	dst, err := os.Create(dstName)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer dst.Close()
 
 	_, err = io.Copy(dst, src)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	err = os.Chmod(dstName, mode)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -186,7 +186,7 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 	// has rx perms
 	dir, err := ioutil.TempDir("/tmp", "gonit-pt-"+name)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	os.Chmod(dir, 0755) // rx perms for all
 
@@ -195,7 +195,7 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 		goprocess = path.Dir(os.Args[0]) + "/goprocess"
 		err := BuildBin("test/process", goprocess)
 		if err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 	}
 
@@ -321,7 +321,7 @@ func CreateGonitSettings(gonitPidfile string, gonitDir string, procDir string) *
 	yaml, _ := goyaml.Marshal(settings)
 	err := ioutil.WriteFile(procDir+"/gonit.yml", yaml, 0666)
 	if err != nil {
-		log.Fatalf("WriteFile(%s): %v", procDir+"/gonit.yml", err)
+		log.Panicf("WriteFile(%s): %v", procDir+"/gonit.yml", err)
 	}
 	return settings
 }
@@ -345,7 +345,7 @@ func topLevel() string {
 	if toplevel == "" {
 		dir, err := findPath(".", ".git")
 		if err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 		toplevel = dir
 	}

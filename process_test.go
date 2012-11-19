@@ -99,7 +99,7 @@ func (s *ProcessSuite) TestSimple(c *C) {
 
 	pid, err := process.StartProcess()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	pause()
@@ -187,7 +187,7 @@ func (s *ProcessSuite) TestDetached(c *C) {
 
 	pid, err := process.StartProcess()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	pause()
@@ -201,7 +201,7 @@ func (s *ProcessSuite) TestDetached(c *C) {
 	c.Check(pid, Not(Equals), info.Pid)
 	pid, err = process.Pid()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	c.Check(pid, Equals, info.Pid)
 
@@ -218,7 +218,7 @@ func (s *ProcessSuite) TestDetached(c *C) {
 
 		pid, err = process.Pid()
 		if err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 
 		c.Check(prevPid, Equals, pid)
@@ -242,7 +242,7 @@ func (s *ProcessSuite) TestDetached(c *C) {
 
 	pid, err = process.Pid()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	c.Check(prevPid, Not(Equals), pid)
@@ -286,7 +286,7 @@ func (s *ProcessSuite) TestFailExe(c *C) {
 
 	err := os.Chmod(helper.TestProcess, 0444)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	_, err = process.StartProcess()

@@ -21,7 +21,7 @@ func setup() {
 	flag.Parse()
 
 	if intDir, err := os.Getwd(); err != nil {
-		log.Fatalf("Error getting pwd: %v", err.Error())
+		log.Panicf("Error getting pwd: %v", err.Error())
 	} else {
 		integrationDir = intDir
 	}
@@ -30,22 +30,22 @@ func setup() {
 	gonitMainDir = integrationDir + "/../../gonit"
 
 	if err := os.MkdirAll(integrationTmpDir, 0755); err != nil {
-		log.Fatalf(err.Error())
+		log.Panicf(err.Error())
 	}
 
 	err := helper.BuildBin(integrationDir+"/../process",
 		integrationTmpDir+"/goprocess")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Panicf(err.Error())
 	}
 
 	err = helper.BuildBin(gonitMainDir, integrationTmpDir+"/gonit")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Panicf(err.Error())
 	}
 
 	if err := os.Chdir(integrationTmpDir); err != nil {
-		log.Fatalf("Error changing dir: %v", err.Error())
+		log.Panicf("Error changing dir: %v", err.Error())
 	}
 }
 
