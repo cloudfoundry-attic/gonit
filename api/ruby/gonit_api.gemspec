@@ -3,6 +3,7 @@ $:.unshift(File.join(File.dirname(__FILE__), 'lib'))
 require 'gonit_api/version'
 
 Gem::Specification.new do |s|
+  s.author = "Doug MacEachern"
   s.name = 'gonit_api'
   s.version = GonitApi::VERSION
   s.summary = 'Gonit API client'
