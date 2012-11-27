@@ -36,7 +36,7 @@ func (w *Watcher) doCheckProcess(process *Process) error {
 	// TODO: flapping detection
 	Log.Debugf("Process %q: action start", process.Name)
 
-	return w.Control.dispatchAction(process, ACTION_START)
+	return w.Control.dispatchAction(process, NewControlAction(ACTION_START))
 }
 
 func (w *Watcher) checkProcess(process *Process) {

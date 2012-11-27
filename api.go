@@ -95,7 +95,7 @@ func NewAPI(config *ConfigManager) *API {
 
 // *Process methods apply to a single service
 
-func (c *Control) callAction(name string, r *ActionResult, action int) error {
+func (c *Control) callAction(name string, r *ActionResult, action *ControlAction) error {
 	err := c.DoAction(name, action)
 
 	r.Total++
@@ -108,23 +108,23 @@ func (c *Control) callAction(name string, r *ActionResult, action int) error {
 }
 
 func (a *API) StartProcess(name string, r *ActionResult) error {
-	return a.Control.callAction(name, r, ACTION_START)
+	return a.Control.callAction(name, r, NewControlAction(ACTION_START))
 }
 
 func (a *API) StopProcess(name string, r *ActionResult) error {
-	return a.Control.callAction(name, r, ACTION_STOP)
+	return a.Control.callAction(name, r, NewControlAction(ACTION_STOP))
 }
 
 func (a *API) RestartProcess(name string, r *ActionResult) error {
-	return a.Control.callAction(name, r, ACTION_RESTART)
+	return a.Control.callAction(name, r, NewControlAction(ACTION_RESTART))
 }
 
 func (a *API) MonitorProcess(name string, r *ActionResult) error {
-	return a.Control.callAction(name, r, ACTION_MONITOR)
+	return a.Control.callAction(name, r, NewControlAction(ACTION_MONITOR))
 }
 
 func (a *API) UnmonitorProcess(name string, r *ActionResult) error {
-	return a.Control.callAction(name, r, ACTION_UNMONITOR)
+	return a.Control.callAction(name, r, NewControlAction(ACTION_UNMONITOR))
 }
 
 func (c *Control) processSummary(process *Process, summary *ProcessSummary) {
@@ -165,12 +165,14 @@ func (a *API) StatusProcess(name string, r *ProcessStatus) error {
 
 // *Group methods apply to a service group
 
-func (c *Control) groupAction(name string, r *ActionResult, action int) error {
+func (c *Control) groupAction(name string, r *ActionResult, method int) error {
 	group, err := c.Config().FindGroup(name)
 
 	if err != nil {
 		return &ActionError{err}
 	}
+
+	action := NewGroupControlAction(method)
 
 	for name := range group.Processes {
 		c.callAction(name, r, action)
@@ -227,7 +229,8 @@ func (a *API) StatusGroup(name string, r *ProcessGroupStatus) error {
 
 // *All methods apply to all services
 
-func (c *Control) allAction(r *ActionResult, action int) error {
+func (c *Control) allAction(r *ActionResult, method int) error {
+	action := NewGroupControlAction(method)
 	for _, processGroup := range c.Config().ProcessGroups {
 		for name, _ := range processGroup.Processes {
 			c.callAction(name, r, action)

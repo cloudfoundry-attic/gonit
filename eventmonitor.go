@@ -112,7 +112,7 @@ type EventMonitor struct {
 }
 
 type ControlInterface interface {
-	DoAction(name string, action int) error
+	DoAction(name string, action *ControlAction) error
 	IsMonitoring(process *Process) bool
 }
 
@@ -161,21 +161,21 @@ func (e *EventMonitor) triggerAction(process *Process, event *ParsedEvent,
 	case "stop":
 		if e.TriggerProcessActions(process) {
 			e.printTriggeredMessage(event, resourceVal)
-			return e.control.DoAction(event.processName, ACTION_STOP)
+			return e.control.DoAction(event.processName, NewControlAction(ACTION_STOP))
 		} else {
 			return nil
 		}
 	case "start":
 		if e.TriggerProcessActions(process) {
 			e.printTriggeredMessage(event, resourceVal)
-			return e.control.DoAction(event.processName, ACTION_START)
+			return e.control.DoAction(event.processName, NewControlAction(ACTION_START))
 		} else {
 			return nil
 		}
 	case "restart":
 		if e.TriggerProcessActions(process) {
 			e.printTriggeredMessage(event, resourceVal)
-			return e.control.DoAction(event.processName, ACTION_RESTART)
+			return e.control.DoAction(event.processName, NewControlAction(ACTION_RESTART))
 		} else {
 			return nil
 		}
