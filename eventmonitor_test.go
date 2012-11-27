@@ -190,9 +190,9 @@ type FakeControl struct {
 	isMonitoring      bool
 }
 
-func (fc *FakeControl) DoAction(name string, action int) error {
+func (fc *FakeControl) DoAction(name string, action *ControlAction) error {
 	fc.numDoActionCalled++
-	fc.lastActionCalled = action
+	fc.lastActionCalled = action.method
 	return nil
 }
 

@@ -27,6 +27,11 @@ const (
 )
 
 const (
+	scopeDefault = iota
+	scopeRestartGroup
+)
+
+const (
 	processStopped = iota
 	processStarted
 )
@@ -45,9 +50,14 @@ type EventMonitorInterface interface {
 type Control struct {
 	ConfigManager *ConfigManager
 	EventMonitor  EventMonitorInterface
-	visits        map[string]*visitor
 	States        map[string]*ProcessState
 	persistLock   sync.Mutex
+}
+
+type ControlAction struct {
+	scope  int
+	method int
+	visits map[string]*visitor
 }
 
 // flags to avoid invoking actions more than once
@@ -138,7 +148,7 @@ func (c *ConfigManager) VisitProcesses(visit func(p *Process) bool) {
 	}
 }
 
-func (c *Control) visitorOf(process *Process) *visitor {
+func (c *ControlAction) visitorOf(process *Process) *visitor {
 	if _, exists := c.visits[process.Name]; !exists {
 		c.visits[process.Name] = &visitor{}
 	}
@@ -168,9 +178,24 @@ func (c *Control) RegisterEventMonitor(eventMonitor *EventMonitor) {
 	c.EventMonitor = eventMonitor
 }
 
+func NewControlAction(method int) *ControlAction {
+	return &ControlAction{
+		method: method,
+		visits: make(map[string]*visitor),
+	}
+}
+
+func NewGroupControlAction(method int) *ControlAction {
+	action := NewControlAction(method)
+	if method == ACTION_RESTART {
+		action.scope = scopeRestartGroup
+	}
+	return action
+}
+
 // Invoke given action for the given process and its
 // dependents and/or dependencies
-func (c *Control) DoAction(name string, action int) error {
+func (c *Control) DoAction(name string, action *ControlAction) error {
 	process, err := c.Config().FindProcess(name)
 	if err != nil {
 		Log.Error(err.Error())
@@ -182,39 +207,38 @@ func (c *Control) DoAction(name string, action int) error {
 	})
 }
 
-func (c *Control) dispatchAction(process *Process, action int) error {
-	c.visits = make(map[string]*visitor)
+func (c *Control) dispatchAction(process *Process, action *ControlAction) error {
 
-	switch action {
+	switch action.method {
 	case ACTION_START:
 		if process.IsRunning() {
 			Log.Debugf("Process %q already running", process.Name)
 			c.monitorSet(process)
 			return nil
 		}
-		c.doDepend(process, ACTION_STOP)
-		c.doStart(process)
-		c.doDepend(process, ACTION_START)
+		c.doDepend(process, ACTION_STOP, action)
+		c.doStart(process, action)
+		c.doDepend(process, ACTION_START, action)
 
 	case ACTION_STOP:
-		c.doDepend(process, ACTION_STOP)
-		c.doStop(process)
+		c.doDepend(process, ACTION_STOP, action)
+		c.doStop(process, action)
 
 	case ACTION_RESTART:
-		c.doDepend(process, ACTION_STOP)
-		if c.doStop(process) {
-			c.doStart(process)
-			c.doDepend(process, ACTION_START)
+		c.doDepend(process, ACTION_STOP, action)
+		if c.doStop(process, action) {
+			c.doStart(process, action)
+			c.doDepend(process, ACTION_START, action)
 		} else {
 			c.monitorSet(process)
 		}
 
 	case ACTION_MONITOR:
-		c.doMonitor(process)
+		c.doMonitor(process, action)
 
 	case ACTION_UNMONITOR:
-		c.doDepend(process, ACTION_UNMONITOR)
-		c.doUnmonitor(process)
+		c.doDepend(process, ACTION_UNMONITOR, action)
+		c.doUnmonitor(process, action)
 
 	default:
 		err := fmt.Errorf("process %q -- invalid action: %d",
@@ -239,19 +263,21 @@ func (c *Control) invoke(process *Process, action func() error) error {
 }
 
 // Start the given Process dependencies before starting Process
-func (c *Control) doStart(process *Process) {
-	visitor := c.visitorOf(process)
+func (c *Control) doStart(process *Process, action *ControlAction) {
+	visitor := action.visitorOf(process)
 	if visitor.started {
 		return
 	}
 	visitor.started = true
 
-	for _, d := range process.DependsOn {
-		parent, err := c.Config().FindProcess(d)
-		if err != nil {
-			panic(err)
+	if action.scope != scopeRestartGroup {
+		for _, d := range process.DependsOn {
+			parent, err := c.Config().FindProcess(d)
+			if err != nil {
+				panic(err)
+			}
+			c.doStart(parent, action)
 		}
-		c.doStart(parent)
 	}
 
 	if !process.IsRunning() {
@@ -265,8 +291,8 @@ func (c *Control) doStart(process *Process) {
 
 // Stop the given Process.
 // Waits for process to stop or until Process.Timeout is reached.
-func (c *Control) doStop(process *Process) bool {
-	visitor := c.visitorOf(process)
+func (c *Control) doStop(process *Process, action *ControlAction) bool {
+	visitor := action.visitorOf(process)
 	var rv = true
 	if visitor.stopped {
 		return rv
@@ -286,8 +312,8 @@ func (c *Control) doStop(process *Process) bool {
 }
 
 // Enable monitoring for Process dependencies and given Process.
-func (c *Control) doMonitor(process *Process) {
-	if c.visitorOf(process).started {
+func (c *Control) doMonitor(process *Process, action *ControlAction) {
+	if action.visitorOf(process).started {
 		return
 	}
 
@@ -296,15 +322,15 @@ func (c *Control) doMonitor(process *Process) {
 		if err != nil {
 			panic(err)
 		}
-		c.doMonitor(parent)
+		c.doMonitor(parent, action)
 	}
 
 	c.monitorSet(process)
 }
 
 // Disable monitoring for the given Process
-func (c *Control) doUnmonitor(process *Process) {
-	visitor := c.visitorOf(process)
+func (c *Control) doUnmonitor(process *Process, action *ControlAction) {
+	visitor := action.visitorOf(process)
 	if visitor.stopped {
 		return
 	}
@@ -314,24 +340,24 @@ func (c *Control) doUnmonitor(process *Process) {
 }
 
 // Apply actions to processes that depend on the given Process
-func (c *Control) doDepend(process *Process, action int) {
+func (c *Control) doDepend(process *Process, method int, action *ControlAction) {
 	c.ConfigManager.VisitProcesses(func(child *Process) bool {
 		for _, dep := range child.DependsOn {
 			if dep == process.Name {
-				switch action {
+				switch method {
 				case ACTION_START:
-					c.doStart(child)
+					c.doStart(child, action)
 				case ACTION_MONITOR:
-					c.doMonitor(child)
+					c.doMonitor(child, action)
 				}
 
-				c.doDepend(child, action)
+				c.doDepend(child, method, action)
 
-				switch action {
+				switch method {
 				case ACTION_STOP:
-					c.doStop(child)
+					c.doStop(child, action)
 				case ACTION_UNMONITOR:
-					c.doUnmonitor(child)
+					c.doUnmonitor(child, action)
 				}
 				break
 			}

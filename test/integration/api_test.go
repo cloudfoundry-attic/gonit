@@ -22,7 +22,6 @@ type ApiIntSuite struct {
 }
 
 const (
-	group              = "api_test"
 	errorInProgressFmt = "ActionError: " + gonit.ERROR_IN_PROGRESS_FMT
 )
 
@@ -46,7 +45,7 @@ func (s *ApiIntSuite) SetUpSuite(c *C) {
 
 	s.settings = helper.CreateGonitSettings("", s.dir, s.dir)
 
-	helper.CreateProcessGroupCfg(group, s.dir,
+	helper.CreateProcessGroupCfg("api_test", s.dir,
 		&gonit.ProcessGroup{Processes: s.procs})
 
 	var err error
@@ -60,7 +59,7 @@ func (s *ApiIntSuite) SetUpSuite(c *C) {
 		c.Errorf("rpc.Dial: %v", err)
 	}
 
-	pgs, err := s.statusGroup(group)
+	pgs, err := s.statusGroup("api_test")
 	c.Assert(err, IsNil)
 	c.Assert(pgs.Group, HasLen, len(s.procs))
 	for _, ps := range pgs.Group {
