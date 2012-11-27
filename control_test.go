@@ -53,7 +53,7 @@ func (s *ControlSuite) TestActions(c *C) {
 	c.Check(MONITOR_NOT, Equals, ctl.State(process).Monitor)
 	c.Check(0, Equals, ctl.State(process).Starts)
 
-	rv := ctl.DoAction(name, ACTION_START)
+	rv := ctl.DoAction(name, NewControlAction(ACTION_START))
 	c.Check(1, Equals, fem.numStartMonitoringCalled)
 	c.Check(rv, IsNil)
 
@@ -62,18 +62,18 @@ func (s *ControlSuite) TestActions(c *C) {
 
 	c.Check(true, Equals, process.IsRunning())
 
-	rv = ctl.DoAction(name, ACTION_RESTART)
+	rv = ctl.DoAction(name, NewControlAction(ACTION_RESTART))
 	c.Check(2, Equals, fem.numStartMonitoringCalled)
 	c.Check(rv, IsNil)
 
 	c.Check(2, Equals, ctl.State(process).Starts)
 
-	rv = ctl.DoAction(name, ACTION_STOP)
+	rv = ctl.DoAction(name, NewControlAction(ACTION_STOP))
 	c.Check(rv, IsNil)
 
 	c.Check(MONITOR_NOT, Equals, ctl.State(process).Monitor)
 
-	rv = ctl.DoAction(name, ACTION_MONITOR)
+	rv = ctl.DoAction(name, NewControlAction(ACTION_MONITOR))
 	c.Check(3, Equals, fem.numStartMonitoringCalled)
 	c.Check(rv, IsNil)
 
@@ -111,13 +111,13 @@ func (s *ControlSuite) TestDepends(c *C) {
 	c.Check(err, IsNil)
 
 	// start main process
-	rv := ctl.DoAction(name, ACTION_START)
+	rv := ctl.DoAction(name, NewControlAction(ACTION_START))
 	c.Check(rv, IsNil)
 
 	c.Check(true, Equals, process.IsRunning())
 
 	// stop main process
-	rv = ctl.DoAction(name, ACTION_STOP)
+	rv = ctl.DoAction(name, NewControlAction(ACTION_STOP))
 	c.Check(rv, IsNil)
 	c.Check(false, Equals, process.IsRunning())
 
@@ -152,7 +152,7 @@ func (s *ControlSuite) TestDepends(c *C) {
 	// test start/stop of dependant
 
 	// start main sevice
-	rv = ctl.DoAction(name, ACTION_START)
+	rv = ctl.DoAction(name, NewControlAction(ACTION_START))
 	c.Check(rv, IsNil)
 	c.Check(true, Equals, process.IsRunning())
 	c.Check(2, Equals, ctl.State(process).Starts)
@@ -167,20 +167,20 @@ func (s *ControlSuite) TestDepends(c *C) {
 	}
 
 	// stop a dependency
-	rv = ctl.DoAction(process.DependsOn[0], ACTION_STOP)
+	rv = ctl.DoAction(process.DependsOn[0], NewControlAction(ACTION_STOP))
 	c.Check(rv, IsNil)
 
 	// dependent will also stop
 	c.Check(false, Equals, process.IsRunning())
 
 	// start a dependency
-	rv = ctl.DoAction(process.DependsOn[0], ACTION_START)
+	rv = ctl.DoAction(process.DependsOn[0], NewControlAction(ACTION_START))
 	c.Check(rv, IsNil)
 
 	// main process will come back up
 	c.Check(true, Equals, process.IsRunning())
 
-	ctl.DoAction(process.Name, ACTION_STOP)
+	ctl.DoAction(process.Name, NewControlAction(ACTION_STOP))
 
 	c.Check(3, Equals, ctl.State(process).Starts)
 
@@ -188,7 +188,7 @@ func (s *ControlSuite) TestDepends(c *C) {
 
 	// stop all dependencies
 	for _, dname := range process.DependsOn {
-		ctl.DoAction(dname, ACTION_STOP)
+		ctl.DoAction(dname, NewControlAction(ACTION_STOP))
 	}
 
 	// verify every process has been stopped
