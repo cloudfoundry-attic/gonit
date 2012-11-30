@@ -132,6 +132,8 @@ func main() {
 			}
 			savePid()
 			go handleSignals()
+		} else {
+			savePid()
 		}
 
 		saveProcessInfo()

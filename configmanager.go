@@ -64,7 +64,6 @@ type Process struct {
 	Stderr      string
 	Env         []string
 	Dir         string
-	Detached    bool
 	Description string
 	DependsOn   []string
 	Actions     map[string][]string

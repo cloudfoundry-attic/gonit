@@ -103,10 +103,8 @@ func (p *Process) Spawn(program string) (*exec.Cmd, error) {
 	return cmd, err
 }
 
-// Start a process:
-// If Detached == true; process must detached itself and
-// manage its own Pidfile.
-// Otherwise; we will detach the process and manage its Pidfile.
+// Start a process.
+// Process must manage its own Pidfile.
 func (p *Process) StartProcess() (int, error) {
 	cmd, err := p.Spawn(p.Start)
 	if err != nil {
@@ -116,12 +114,7 @@ func (p *Process) StartProcess() (int, error) {
 
 	pid := cmd.Process.Pid
 
-	if p.Detached {
-		err = cmd.Wait()
-	} else {
-		err = p.SavePid(pid)
-		go cmd.Wait()
-	}
+	go cmd.Wait()
 
 	return pid, err
 }

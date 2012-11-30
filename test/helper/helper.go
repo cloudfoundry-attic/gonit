@@ -212,6 +212,7 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 		TestProcess,
 		"-d", dir,
 		"-n", name,
+		"-p", pidfile,
 	}
 
 	for _, arg := range flags {
@@ -220,7 +221,7 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 
 	if detached {
 		// process will detach itself
-		args = append(args, "-F", "-p", pidfile)
+		args = append(args, "-F")
 
 		// configure stop + restart commands with
 		// the same flags as the start command
@@ -230,15 +231,14 @@ func NewTestProcess(name string, flags []string, detached bool) *Process {
 
 	start = mkcmd(args, "start")
 	return &Process{
-		Name:     name,
-		Start:    strings.Join(start, " "),
-		Stop:     strings.Join(stop, " "),
-		Restart:  strings.Join(restart, " "),
-		Dir:      dir,
-		Stderr:   logfile,
-		Stdout:   logfile,
-		Pidfile:  pidfile,
-		Detached: detached,
+		Name:    name,
+		Start:   strings.Join(start, " "),
+		Stop:    strings.Join(stop, " "),
+		Restart: strings.Join(restart, " "),
+		Dir:     dir,
+		Stderr:  logfile,
+		Stdout:  logfile,
+		Pidfile: pidfile,
 	}
 }
 

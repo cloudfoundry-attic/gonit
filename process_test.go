@@ -34,15 +34,6 @@ func processInfo(p *Process) *helper.ProcessInfo {
 // these assertions apply to any daemon process
 func assertProcessInfo(c *C, process *Process, info *helper.ProcessInfo) {
 	selfInfo := helper.CurrentProcessInfo()
-	var ppid int
-
-	if process.Detached {
-		ppid = 1
-	} else {
-		ppid = selfInfo.Pid
-	}
-
-	c.Check(ppid, Equals, info.Ppid) // parent pid
 
 	c.Check(selfInfo.Pgrp, Not(Equals), info.Pgrp) // process group will change
 
@@ -108,11 +99,8 @@ func (s *ProcessSuite) TestSimple(c *C) {
 
 	info := processInfo(process)
 
-	if process.Detached {
-		c.Check(true, Equals, grandArgs(info.Args))
-	} else {
-		c.Check(pid, Equals, info.Pid)
-	}
+	c.Check(pid, Equals, info.Pid)
+
 	assertProcessInfo(c, process, info)
 
 	err = process.StopProcess()
