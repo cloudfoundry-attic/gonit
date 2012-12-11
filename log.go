@@ -27,7 +27,7 @@ func init() {
 
 func (lc *LoggerConfig) Init() error {
 	var file *os.File
-	var level *steno.LogLevel
+	var level steno.LogLevel
 	var err error
 
 	if lc.Level != "" {
